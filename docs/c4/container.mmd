@@ -1,0 +1,31 @@
+C4Container
+  title Container Diagram - Real Estate Mobile Services
+  Person(user, "User", "Buyer, tenant or owner")
+  System_Boundary(sys, "Real Estate Mobile Services") {
+    Container(flutter, "Flutter App", "Dart, Flutter", "Mobile app built by Housem")
+    Container(rn, "React Native App", "TypeScript, Expo", "Mobile app built by Gharbi")
+  }
+  System_Boundary(sb, "Supabase Project") {
+    Container(auth, "Auth", "Supabase Auth", "Email/password sign-up and login, JWT")
+    Container(api, "REST API", "PostgREST", "Auto-generated API, protected by RLS")
+    ContainerDb(db, "Database", "PostgreSQL", "Tables, RLS policies, triggers")
+    Container(storage, "Storage", "Supabase Storage", "Property photos and avatars")
+    Container(rt, "Realtime", "WebSocket", "Pushes new messages and notifications")
+  }
+  System_Ext(maps, "Map Provider", "OpenStreetMap / Google or Apple maps")
+  Rel(user, flutter, "Uses")
+  Rel(user, rn, "Uses")
+  Rel(flutter, auth, "Sign up, login", "HTTPS")
+  Rel(rn, auth, "Sign up, login", "HTTPS")
+  Rel(flutter, api, "Reads and writes data", "HTTPS / JSON")
+  Rel(rn, api, "Reads and writes data", "HTTPS / JSON")
+  Rel(flutter, storage, "Uploads and loads photos", "HTTPS")
+  Rel(rn, storage, "Uploads and loads photos", "HTTPS")
+  Rel(flutter, rt, "Subscribes to chat and notifications", "WebSocket")
+  Rel(rn, rt, "Subscribes to chat and notifications", "WebSocket")
+  Rel(api, db, "Queries", "SQL")
+  Rel(auth, db, "Stores users", "SQL")
+  Rel(storage, db, "Stores file metadata", "SQL")
+  Rel(rt, db, "Listens to inserts", "Replication")
+  Rel(flutter, maps, "Loads map tiles", "HTTPS")
+  Rel(rn, maps, "Loads map tiles", "HTTPS")
