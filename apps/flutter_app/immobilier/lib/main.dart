@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'core/theme.dart';
+import 'models/property.dart';
+import 'widgets/property_card.dart';
+
 void main() {
   runApp(const MyApp());
 }
@@ -7,115 +11,153 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      title: 'Properties',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
+      home: const PropertyListScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
+const _ownerId = '9b1f0c52-6a3e-4c0e-8d57-2f6c1a7e4b10';
 
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
+final List<Property> fakeProperties = [
+  Property(
+    id: 'a1c1e0f2-1111-4a1b-9c01-000000000001',
+    ownerId: _ownerId,
+    title: 'Modern apartment with sea view',
+    description: 'Bright apartment close to the beach and cafés.',
+    listingType: 'rent',
+    propertyType: 'apartment',
+    price: 1800,
+    surfaceM2: 95,
+    rooms: 3,
+    bathrooms: 2,
+    city: 'La Marsa',
+    address: 'Avenue Taieb Mhiri',
+    latitude: 36.8782,
+    longitude: 10.3247,
+    createdAt: DateTime(2026, 10, 28),
+    updatedAt: DateTime(2026, 10, 28),
+  ),
+  Property(
+    id: 'a1c1e0f2-2222-4a1b-9c02-000000000002',
+    ownerId: _ownerId,
+    title: 'Luxury villa with private pool',
+    description: 'Spacious villa with a garden and a pool.',
+    listingType: 'sale',
+    propertyType: 'villa',
+    price: 1250000,
+    surfaceM2: 320,
+    rooms: 6,
+    bathrooms: 4,
+    city: 'Hammamet',
+    address: 'Route de Yasmine',
+    latitude: 36.4,
+    longitude: 10.6167,
+    createdAt: DateTime(2026, 10, 20),
+    updatedAt: DateTime(2026, 10, 25),
+  ),
+  Property(
+    id: 'a1c1e0f2-3333-4a1b-9c03-000000000003',
+    ownerId: _ownerId,
+    title: 'Family house near the beach',
+    description: 'Quiet neighborhood, two floors, small terrace.',
+    listingType: 'sale',
+    propertyType: 'house',
+    price: 480000,
+    surfaceM2: 180,
+    rooms: 4,
+    bathrooms: 2,
+    city: 'Sousse',
+    address: 'Boulevard 14 Janvier',
+    latitude: 35.8256,
+    longitude: 10.6084,
+    createdAt: DateTime(2026, 10, 12),
+    updatedAt: DateTime(2026, 10, 12),
+  ),
+  Property(
+    id: 'a1c1e0f2-4444-4a1b-9c04-000000000004',
+    ownerId: _ownerId,
+    title: 'Open space office, Lac 2',
+    description: 'Ready-to-use office in a business district.',
+    listingType: 'rent',
+    propertyType: 'office',
+    price: 2500,
+    surfaceM2: 70,
+    rooms: 3,
+    bathrooms: 1,
+    city: 'Tunis',
+    address: 'Les Berges du Lac 2',
+    latitude: 36.8462,
+    longitude: 10.2733,
+    createdAt: DateTime(2026, 11, 1),
+    updatedAt: DateTime(2026, 11, 1),
+  ),
+];
 
-  final String title;
+// ---------------------------------------------------------------------------
+// Screen
+// ---------------------------------------------------------------------------
+
+class PropertyListScreen extends StatefulWidget {
+  const PropertyListScreen({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<PropertyListScreen> createState() => _PropertyListScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _PropertyListScreenState extends State<PropertyListScreen> {
+  final Set<String> _favoriteIds = {};
 
-  void _incrementCounter() {
+  void _toggleFavorite(String id) {
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      if (!_favoriteIds.remove(id)) _favoriteIds.add(id);
     });
+  }
+
+  void _openProperty(Property property) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('Opened: ${property.title}')));
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('Properties'),
+        backgroundColor: AppColors.background,
+        surfaceTintColor: Colors.transparent,
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+      body: ListView.separated(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        itemCount: fakeProperties.length,
+        separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.lg),
+        itemBuilder: (context, index) {
+          final p = fakeProperties[index];
+
+          // The card is a fixed 328 x 334, so center it on wide screens.
+          return Center(
+            child: PropertyCard(
+              // image: const NetworkImage('https://...'), // add later
+              price: p.formattedPrice,
+              period: p.period,
+              title: p.title,
+              location: p.locationLabel,
+              surface: p.surfaceM2,
+              rooms: p.rooms,
+              propertyType: p.propertyTypeLabel,
+              favorite: _favoriteIds.contains(p.id),
+              onFavoritePress: () => _toggleFavorite(p.id),
+              onPress: () => _openProperty(p),
             ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+          );
+        },
       ),
     );
   }
