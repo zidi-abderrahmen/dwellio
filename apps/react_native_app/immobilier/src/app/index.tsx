@@ -1,38 +1,43 @@
+import React, { useCallback, useState } from 'react';
 
-import React, { useState } from 'react';
 import {
   View,
   Text,
   FlatList,
   StyleSheet,
-  SafeAreaView,
-  StatusBar,
+  ListRenderItemInfo,
 } from 'react-native';
 
-import PropertyCard from '../components/PropertyCard';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 
-interface Property {
-  id: string;
-  title: string;
-  listing_type: 'sale' | 'rent';
-  property_type:
-    | 'apartment'
-    | 'house'
-    | 'villa'
-    | 'land'
-    | 'office'
-    | 'shop';
-  price: number;
-  surface_m2: number;
-  rooms: number;
-  bathrooms: number;
-  city: string;
-  address: string;
+import PropertyCard, {
+  PropertyCardData,
+  PropertyCardVariant,
+} from '../components/PropertyCard';
+
+import { theme, spacing, radius, typography } from '../theme';
+
+// --------------------------------------------------
+// Types
+// --------------------------------------------------
+
+interface Property extends PropertyCardData {
+  address: string | null;
+  bathrooms: number | null;
+  variant: PropertyCardVariant;
 }
+
+const colors = theme.colors;
+
+// --------------------------------------------------
+// Mock Properties
+// Based on the Supabase properties table
+// --------------------------------------------------
 
 const fakeProperties: Property[] = [
   {
-    id: '1',
+    id: '00000000-0000-4000-8000-000000000001',
     title: 'Bright 3-room apartment',
     listing_type: 'sale',
     property_type: 'apartment',
@@ -42,9 +47,10 @@ const fakeProperties: Property[] = [
     bathrooms: 2,
     city: 'Tunis',
     address: 'Les Berges du Lac, Tunis',
+    variant: 'featured',
   },
   {
-    id: '2',
+    id: '00000000-0000-4000-8000-000000000002',
     title: 'Modern family villa',
     listing_type: 'sale',
     property_type: 'villa',
@@ -54,9 +60,10 @@ const fakeProperties: Property[] = [
     bathrooms: 3,
     city: 'La Marsa',
     address: 'La Marsa, Tunis',
+    variant: 'new',
   },
   {
-    id: '3',
+    id: '00000000-0000-4000-8000-000000000003',
     title: 'Cozy apartment for rent',
     listing_type: 'rent',
     property_type: 'apartment',
@@ -66,9 +73,10 @@ const fakeProperties: Property[] = [
     bathrooms: 1,
     city: 'Ariana',
     address: 'Ennasr 2, Ariana',
+    variant: 'standard',
   },
   {
-    id: '4',
+    id: '00000000-0000-4000-8000-000000000004',
     title: 'Spacious traditional house',
     listing_type: 'sale',
     property_type: 'house',
@@ -78,60 +86,70 @@ const fakeProperties: Property[] = [
     bathrooms: 2,
     city: 'Bizerte',
     address: 'Centre Ville, Bizerte',
+    variant: 'standard',
   },
 ];
+
+// --------------------------------------------------
+// Home Screen
+// --------------------------------------------------
 
 export default function HomeScreen() {
   const [favorites, setFavorites] = useState<string[]>([]);
 
-  const toggleFavorite = (id: string) => {
+  // -----------------------------------------------
+  // Toggle Favorite
+  // -----------------------------------------------
+
+  const toggleFavorite = useCallback((id: string) => {
     setFavorites((previous) =>
       previous.includes(id)
         ? previous.filter((item) => item !== id)
         : [...previous, id],
     );
-  };
+  }, []);
 
-  const renderProperty = ({ item }: { item: Property }) => {
-    const formattedPrice = `${item.price.toLocaleString(
-      'fr-TN',
-    )} DT`;
+  // -----------------------------------------------
+  // Render Property
+  // -----------------------------------------------
 
-    return (
-      <View style={styles.cardContainer}>
-        <PropertyCard
-          price={formattedPrice}
-          period={
-            item.listing_type === 'rent'
-              ? '/ mois'
-              : ''
-          }
-          title={item.title}
-          location={item.address}
-          surface={item.surface_m2}
-          rooms={item.rooms}
-          propertyType={item.property_type}
-          favorite={favorites.includes(item.id)}
-          onFavoritePress={() =>
-            toggleFavorite(item.id)
-          }
-          onPress={() =>
-            console.log('Selected property:', item.id)
-          }
-        />
-      </View>
-    );
-  };
+  const renderProperty = useCallback(
+    ({ item }: ListRenderItemInfo<Property>) => {
+      return (
+        <View style={styles.cardContainer}>
+          <PropertyCard
+            property={item}
+            variant={item.variant}
+            currencyLabel="DT"
+            period={
+              item.listing_type === 'rent'
+                ? '/ mois'
+                : undefined
+            }
+            favorite={favorites.includes(item.id)}
+            onFavoritePress={() => toggleFavorite(item.id)}
+            onPress={() => {
+              console.log('Selected property:', item.id);
+            }}
+          />
+        </View>
+      );
+    },
+    [favorites, toggleFavorite],
+  );
+
+  // -----------------------------------------------
+  // Screen
+  // -----------------------------------------------
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar
-        barStyle="dark-content"
-      />
+      <StatusBar style="dark" />
 
       {/* Header */}
+
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerText}>
           <Text style={styles.subtitle}>
             Find your next home
           </Text>
@@ -148,7 +166,8 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Section */}
+      {/* Section Header */}
+
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>
           Nos propriétés
@@ -160,82 +179,99 @@ export default function HomeScreen() {
       </View>
 
       {/* Properties List */}
+
       <FlatList
         data={fakeProperties}
         keyExtractor={(item) => item.id}
         renderItem={renderProperty}
+        extraData={favorites}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
+        initialNumToRender={4}
+        windowSize={5}
       />
     </SafeAreaView>
   );
 }
 
+// --------------------------------------------------
+// Styles — Global Application Theme
+// --------------------------------------------------
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: colors.background,
   },
 
+  // Header
+
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
 
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
 
+  headerText: {
+    flex: 1,
+  },
+
   subtitle: {
-    fontSize: 14,
-    color: '#70787D',
-    marginBottom: 4,
+    ...typography.body,
+    color: colors.secondary,
+    marginBottom: spacing.xs,
   },
 
   title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#00677F',
+    ...theme.fonts.headlineMedium,
+    color: colors.primary,
   },
 
   countBadge: {
-    backgroundColor: '#EFF1F2',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
+    backgroundColor: colors.surfaceVariant,
+
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+
+    borderRadius: radius.full,
   },
 
   countText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#40484C',
+    ...theme.fonts.labelMedium,
+    color: colors.secondary,
   },
 
+  // Section Header
+
   sectionHeader: {
-    paddingHorizontal: 20,
-    marginBottom: 16,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
   },
 
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#191C1D',
-    marginBottom: 4,
+    ...theme.fonts.titleLarge,
+    color: colors.onBackground,
+    marginBottom: spacing.xs,
   },
 
   sectionSubtitle: {
-    fontSize: 14,
-    color: '#70787D',
+    ...typography.body,
+    color: colors.secondary,
   },
 
+  // Properties List
+
   listContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 32,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxl,
   },
 
   cardContainer: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: spacing.lg,
   },
 });
