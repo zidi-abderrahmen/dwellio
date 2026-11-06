@@ -2,296 +2,513 @@ import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
 
+// --------------------------------------------------
+// Types — Based on the Supabase properties table
+// --------------------------------------------------
+
+enum ListingType { sale, rent }
+
+enum PropertyType { apartment, house, villa, land, office, shop }
+
+enum PropertyStatus { active, sold, rented, hidden }
+
+enum PropertyCardVariant { standard, featured, newListing }
+
+@immutable
+class PropertyCardData {
+  const PropertyCardData({
+    required this.id,
+    required this.title,
+    required this.listingType,
+    required this.propertyType,
+    required this.price,
+    required this.surfaceM2,
+    required this.rooms,
+    required this.city,
+  });
+
+  final String id;
+  final String title;
+  final ListingType listingType;
+  final PropertyType propertyType;
+  final double price;
+  final int? surfaceM2;
+  final int? rooms;
+  final String city;
+}
+
+@immutable
+class PropertyRow extends PropertyCardData {
+  const PropertyRow({
+    required super.id,
+    required super.title,
+    required super.listingType,
+    required super.propertyType,
+    required super.price,
+    required super.surfaceM2,
+    required super.rooms,
+    required super.city,
+    required this.ownerId,
+    required this.description,
+    required this.bathrooms,
+    required this.address,
+    required this.latitude,
+    required this.longitude,
+    required this.status,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String ownerId;
+  final String? description;
+  final int? bathrooms;
+  final String? address;
+  final double? latitude;
+  final double? longitude;
+  final PropertyStatus status;
+  final String createdAt;
+  final String updatedAt;
+}
+
+// --------------------------------------------------
+// Property type labels
+// --------------------------------------------------
+
+const Map<PropertyType, String> _propertyTypeLabels = {
+  PropertyType.apartment: 'Apartment',
+  PropertyType.house: 'House',
+  PropertyType.villa: 'Villa',
+  PropertyType.land: 'Land',
+  PropertyType.office: 'Office',
+  PropertyType.shop: 'Shop',
+};
+
+// --------------------------------------------------
+// Formatting helpers
+// --------------------------------------------------
+
+String _formatFrenchNumber(
+  num value, {
+  int maximumFractionDigits = 2,
+}) {
+  final isNegative = value < 0;
+  final fixedValue = value.abs().toStringAsFixed(maximumFractionDigits);
+  final parts = fixedValue.split('.');
+
+  final integerPart = parts.first.replaceAllMapped(
+    RegExp(r'\B(?=(\d{3})+(?!\d))'),
+    (_) => '\u202F',
+  );
+
+  var fractionPart = parts.length > 1 ? parts[1] : '';
+  fractionPart = fractionPart.replaceFirst(RegExp(r'0+$'), '');
+
+  final decimalPart = fractionPart.isEmpty ? '' : ',$fractionPart';
+  final sign = isNegative ? '-' : '';
+
+  return '$sign$integerPart$decimalPart';
+}
+
+String _formatPrice(double price, String currency) {
+  return '${_formatFrenchNumber(price)} $currency';
+}
+
+String _formatSurface(int? surface) {
+  if (surface == null) {
+    return '— m²';
+  }
+
+  return '${_formatFrenchNumber(surface, maximumFractionDigits: 0)} m²';
+}
+
+String _formatRooms(int? rooms) {
+  if (rooms == null) {
+    return '— rooms';
+  }
+
+  return '$rooms ${rooms == 1 ? 'room' : 'rooms'}';
+}
+
+// --------------------------------------------------
+// Property Card
+// --------------------------------------------------
+
 class PropertyCard extends StatelessWidget {
   const PropertyCard({
     super.key,
+    required this.property,
     this.image,
-    required this.price,
-    this.period = '',
-    required this.title,
-    required this.location,
-    this.surface,
-    this.rooms,
-    required this.propertyType,
+    this.variant = PropertyCardVariant.standard,
     this.favorite = false,
+    this.currencyLabel = 'DT',
+    this.period,
     this.onFavoritePress,
     this.onPress,
   });
 
-  final ImageProvider? image;
-  final String price;
-  final String period;
-  final String title;
-  final String location;
-  final num? surface;
-  final int? rooms;
-  final String propertyType;
+  final PropertyCardData property;
+  final ImageProvider<Object>? image;
+  final PropertyCardVariant variant;
   final bool favorite;
+  final String currencyLabel;
+  final String? period;
   final VoidCallback? onFavoritePress;
   final VoidCallback? onPress;
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
+    final priceText = _formatPrice(property.price, currencyLabel);
+    final periodText = period ??
+        (property.listingType == ListingType.rent ? '/ month' : '');
+    final propertyTypeLabel = _propertyTypeLabels[property.propertyType]!;
 
-    return Semantics(
-      button: true,
-      label: '$title, $price',
-      child: Container(
-        // Card: 328 x 334 dp
-        width: 328,
-        height: 334,
-        clipBehavior: Clip.antiAlias,
-        decoration: appCardDecoration,
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            onTap: onPress,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildMedia(),
-                Expanded(child: _buildContent(textTheme)),
-              ],
-            ),
-          ),
+    final String? badgeLabel = switch (variant) {
+      PropertyCardVariant.standard => null,
+      PropertyCardVariant.featured => 'Featured',
+      PropertyCardVariant.newListing => 'New',
+    };
+
+    return Container(
+      width: 328,
+      height: 334,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          width: 1,
+          color: AppColors.outline,
         ),
-      ),
-    );
-  }
-
-  // Media: 326 x 184 dp
-  Widget _buildMedia() {
-    return SizedBox(
-      height: 184,
-      width: double.infinity,
-      child: ColoredBox(
-        color: AppColors.outlineVariant,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (image != null)
-              Image(image: image!, fit: BoxFit.cover)
-            else
-              const Center(
-                child: Icon(
-                  Icons.image_outlined,
-                  size: 48,
-                  color: AppColors.placeholder,
-                ),
-              ),
-
-            // Favorite button: 48 x 48 dp touch target
-            Positioned(
-              top: 4,
-              right: 2,
-              child: Semantics(
-                button: true,
-                label: favorite ? 'Remove from favorites' : 'Add to favorites',
-                child: SizedBox(
-                  width: 48,
-                  height: 48,
-                  child: InkResponse(
-                    // Inner tap wins over the card tap (same as stopPropagation)
-                    onTap: onFavoritePress,
-                    radius: 24,
-                    child: Center(
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: const BoxDecoration(
-                          color: AppColors.surface,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          favorite ? Icons.favorite : Icons.favorite_border,
-                          size: 24,
-                          color: favorite
-                              ? AppColors.favorite
-                              : AppColors.secondary,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Content: padding 12 / 16 / 16, gap 8
-  Widget _buildContent(TextTheme textTheme) {
-    final bodyStyle = textTheme.bodyMedium?.copyWith(color: AppColors.secondary);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.md,
-        AppSpacing.lg,
-        AppSpacing.lg,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        spacing: AppSpacing.sm, // needs Flutter 3.27+
-        children: [
-          // Price row
-          SizedBox(
-            height: 28,
-            child: Row(
-              spacing: AppSpacing.xs,
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Flexible(
-                  child: Text(
-                    price,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.titleLarge?.copyWith(
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ),
-                if (period.isNotEmpty)
-                  Text(
-                    period,
-                    style: textTheme.bodySmall?.copyWith(
-                      color: AppColors.secondary,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          // Title
-          SizedBox(
-            height: 24,
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: textTheme.titleMedium?.copyWith(
-                color: AppColors.onBackground,
-              ),
-            ),
-          ),
-
-          // Location row
-          SizedBox(
-            height: 20,
-            child: Row(
-              spacing: AppSpacing.xs,
-              children: [
-                const Icon(
-                  Icons.location_on_outlined,
-                  size: 16,
-                  color: AppColors.secondary,
-                ),
-                Expanded(
-                  child: Text(
-                    location,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: bodyStyle,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Specs row
-          SizedBox(
-            height: 24,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              spacing: AppSpacing.sm,
-              children: [
-                Row(
-                  spacing: AppSpacing.md,
-                  children: [
-                    if (surface != null)
-                      _SpecItem(
-                        icon: Icons.open_in_full,
-                        text: '$surface m²',
-                        style: bodyStyle,
-                      ),
-                    if (rooms != null)
-                      _SpecItem(
-                        icon: Icons.bed_outlined,
-                        text: '$rooms rooms',
-                        style: bodyStyle,
-                      ),
-                  ],
-                ),
-
-                // Property type chip
-                Flexible(
-                  child: Container(
-                    height: 24,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm,
-                    ),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceVariant,
-                      borderRadius: BorderRadius.circular(AppRadius.full),
-                    ),
-                    child: Text(
-                      propertyType,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: textTheme.labelMedium?.copyWith(
-                        color: AppColors.secondary,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color.fromRGBO(0, 0, 0, 0.08),
+            offset: Offset(0, 2),
+            blurRadius: 4,
           ),
         ],
       ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(11),
+        child: Material(
+          color: AppColors.surface,
+          child: InkWell(
+            onTap: onPress,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // -----------------------------------------
+                // Media
+                // -----------------------------------------
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 184,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (image != null)
+                        Image(
+                          image: image!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return _buildImagePlaceholder();
+                          },
+                        )
+                      else
+                        _buildImagePlaceholder(),
+
+                      // Listing Badge
+
+                      if (badgeLabel != null)
+                        Positioned(
+                          left: 12,
+                          top: 12,
+                          child: Container(
+                            constraints: const BoxConstraints(minHeight: 24),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: AppColors.featured,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              badgeLabel,
+                              style: const TextStyle(
+                                fontFamily: AppFontConfig.fontFamily,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                height: 16 / 12,
+                                letterSpacing: 0.5,
+                                color: AppColors.onFeatured,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      // Favorite Button
+
+                      Positioned(
+                        top: 4,
+                        right: 2,
+                        child: SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: Semantics(
+                            button: true,
+                            enabled: onFavoritePress != null,
+                            selected: favorite,
+                            label: favorite
+                                ? 'Remove from favorites'
+                                : 'Add to favorites',
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: onFavoritePress,
+                                customBorder: const CircleBorder(),
+                                child: Center(
+                                  child: Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: const BoxDecoration(
+                                      color: AppColors.surface,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Icon(
+                                      favorite
+                                          ? Icons.favorite
+                                          : Icons.favorite_border,
+                                      size: 24,
+                                      color: favorite
+                                          ? AppColors.favorite
+                                          : AppColors.secondary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // -----------------------------------------
+                // Content
+                // -----------------------------------------
+
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Price Row
+
+                        SizedBox(
+                          height: 28,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  priceText,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontFamily: AppFontConfig.fontFamily,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w500,
+                                    height: 28 / 22,
+                                    color: AppColors.primary,
+                                  ),
+                                ),
+                              ),
+                              if (periodText.isNotEmpty) ...[
+                                const SizedBox(width: 4),
+                                Text(
+                                  periodText,
+                                  style: const TextStyle(
+                                    fontFamily: AppFontConfig.fontFamily,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w400,
+                                    height: 16 / 12,
+                                    letterSpacing: 0.4,
+                                    color: AppColors.secondary,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // Title
+
+                        SizedBox(
+                          height: 24,
+                          child: Text(
+                            property.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontFamily: AppFontConfig.fontFamily,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              height: 24 / 16,
+                              letterSpacing: 0.15,
+                              color: AppColors.onBackground,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // Location Row
+
+                        SizedBox(
+                          height: 20,
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.location_on_outlined,
+                                size: 16,
+                                color: AppColors.secondary,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  property.city,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontFamily: AppFontConfig.fontFamily,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w400,
+                                    height: 20 / 14,
+                                    letterSpacing: 0.25,
+                                    color: AppColors.secondary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // Specs Row
+
+                        SizedBox(
+                          height: 24,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Flexible(
+                                      child: _buildSpecItem(
+                                        icon: Icons.open_in_full,
+                                        text: _formatSurface(property.surfaceM2),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Flexible(
+                                      child: _buildSpecItem(
+                                        icon: Icons.bed_outlined,
+                                        text: _formatRooms(property.rooms),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Property Type Chip
+
+                              Container(
+                                constraints: const BoxConstraints(maxWidth: 100),
+                                height: 24,
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: AppColors.surfaceVariant,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  propertyTypeLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontFamily: AppFontConfig.fontFamily,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    height: 16 / 12,
+                                    letterSpacing: 0.5,
+                                    color: AppColors.secondary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
-}
 
-class _SpecItem extends StatelessWidget {
-  const _SpecItem({
-    required this.icon,
-    required this.text,
-    required this.style,
-  });
+  Widget _buildImagePlaceholder() {
+    return Container(
+      color: AppColors.outlineVariant,
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.home_filled,
+        size: 48,
+        color: AppColors.placeholder,
+      ),
+    );
+  }
 
-  final IconData icon;
-  final String text;
-  final TextStyle? style;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildSpecItem({
+    required IconData icon,
+    required String text,
+  }) {
     return Row(
-      spacing: AppSpacing.xs,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: AppColors.secondary),
-        Text(text, style: style),
+        Icon(
+          icon,
+          size: 16,
+          color: AppColors.secondary,
+        ),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: AppFontConfig.fontFamily,
+              fontSize: 14,
+              fontWeight: FontWeight.w400,
+              height: 20 / 14,
+              letterSpacing: 0.25,
+              color: AppColors.secondary,
+            ),
+          ),
+        ),
       ],
     );
   }
 }
-
-// Usage:
-// PropertyCard(
-//   image: const NetworkImage('https://...'),
-//   price: '\$1,200',
-//   period: '/ month',
-//   title: 'Modern apartment',
-//   location: 'La Marsa, Tunis',
-//   surface: 85,
-//   rooms: 3,
-//   propertyType: 'Apartment',
-//   favorite: isFavorite,
-//   onFavoritePress: () => setState(() => isFavorite = !isFavorite),
-//   onPress: () {},
-// )
