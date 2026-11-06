@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 
+import 'core/router.dart';
 import 'core/theme.dart';
 import 'widgets/property_card.dart';
-
-// --------------------------------------------------
-// Application Entry Point
-// --------------------------------------------------
 
 void main() {
   runApp(const ImmobilierApp());
@@ -17,9 +15,10 @@ class ImmobilierApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MaterialApp.router(
       title: 'Immobilier',
       debugShowCheckedModeBanner: false,
+      routerConfig: appRouter,
       theme: ThemeData(
         useMaterial3: true,
         fontFamily: AppFontConfig.fontFamily,
@@ -34,7 +33,6 @@ class ImmobilierApp extends StatelessWidget {
           error: AppColors.error,
         ),
       ),
-      home: const HomeScreen(),
     );
   }
 }
@@ -138,11 +136,30 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final Set<String> _favorites = <String>{};
 
-  // -----------------------------------------------
-  // Toggle Favorite
-  // -----------------------------------------------
+  @override
+  void initState() {
+    super.initState();
+    fakeLoggedIn.addListener(_clearFavoritesOnLogout);
+  }
+
+  @override
+  void dispose() {
+    fakeLoggedIn.removeListener(_clearFavoritesOnLogout);
+    super.dispose();
+  }
+
+  void _clearFavoritesOnLogout() {
+    if (!fakeLoggedIn.value && _favorites.isNotEmpty) {
+      setState(_favorites.clear);
+    }
+  }
 
   void _toggleFavorite(String id) {
+    if (!fakeLoggedIn.value) {
+      context.push(AppRoutes.loginLocation(from: AppRoutes.home));
+      return;
+    }
+
     setState(() {
       if (_favorites.contains(id)) {
         _favorites.remove(id);
