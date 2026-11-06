@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/router.dart';
 import '../../core/theme.dart';
 import '../../core/validators.dart';
+import '../../providers/auth_providers.dart';
+import '../../services/auth_service.dart';
 
-class RegisterScreen extends StatefulWidget {
+class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key, this.from});
 
   final String? from;
 
   @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
+  ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -33,12 +36,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+Future<void> _submit() async {
+  if (!_formKey.currentState!.validate()) return;
 
-    // STUB (Partie 1)
-    fakeLoggedIn.value = true;
+  FocusScope.of(context).unfocus();
+  setState(() => _loading = true);
+
+  try {
+    final res = await ref.read(authServiceProvider).signUp(
+          fullName: _nameController.text,
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
+
+    if (!mounted) return;
+
+    // session == null ya3ni "Confirm email" mazel mfa3el
+    if (res.session == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Compte créé. Vérifiez votre email pour confirmer.'),
+      ));
+      context.go(AppRoutes.loginLocation(from: widget.from));
+    }
+    // sinon el router yredirecti lel Home wa7du
+  } on AuthFailure catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(e.message)));
+  } finally {
+    if (mounted) setState(() => _loading = false);
   }
+}
 
   @override
   Widget build(BuildContext context) {
