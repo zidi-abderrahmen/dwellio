@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/router.dart';
 import '../../core/theme.dart';
+import '../../providers/auth_providers.dart';
 
-class MainShell extends StatelessWidget {
+class MainShell extends ConsumerWidget {
   const MainShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
-  void _onTabSelected(BuildContext context, int index) {
+  void _onTabSelected(BuildContext context, WidgetRef ref, int index) {
     final tabPath = AppRoutes.tabs[index];
-    if (!fakeLoggedIn.value && AppRoutes.protectedPaths.contains(tabPath)) {
+    final loggedIn = ref.read(sessionProvider) != null;
+
+    if (!loggedIn && AppRoutes.protectedPaths.contains(tabPath)) {
       context.push(AppRoutes.loginLocation(from: tabPath));
       return;
     }
@@ -23,13 +27,13 @@ class MainShell extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: NavigationBar(
         backgroundColor: AppColors.surface,
         selectedIndex: navigationShell.currentIndex,
-        onDestinationSelected: (index) => _onTabSelected(context, index),
+        onDestinationSelected: (index) => _onTabSelected(context, ref, index),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
