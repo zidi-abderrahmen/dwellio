@@ -1,20 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/router.dart';
 import '../../core/theme.dart';
 import '../../core/validators.dart';
+import '../../providers/auth_providers.dart';
+import '../../services/auth_service.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget  {
   const LoginScreen({super.key, this.from});
 
   final String? from;
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -37,12 +41,26 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+Future<void> _submit() async {
+  if (!_formKey.currentState!.validate()) return;
 
-    // STUB (Partie 1): nconnectiw b flag hard-coded
-    fakeLoggedIn.value = true;
+  FocusScope.of(context).unfocus();
+  setState(() => _loading = true);
+
+  try {
+    await ref.read(authServiceProvider).signIn(
+          email: _emailController.text,
+          password: _passwordController.text,
+        );
+    // ma n3amlou ta9ribn navigation: el router yredirecti wa7du
+  } on AuthFailure catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(e.message)));
+  } finally {
+    if (mounted) setState(() => _loading = false);
   }
+}
 
   @override
   Widget build(BuildContext context) {
