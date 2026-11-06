@@ -1,24 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/router.dart';
+import 'core/supabase_config.dart';
 import 'core/theme.dart';
+import 'providers/auth_providers.dart';
 import 'widgets/property_card.dart';
 
-void main() {
-  runApp(const ImmobilierApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Supabase.initialize(
+    url: SupabaseConfig.url,
+    anonKey: SupabaseConfig.anonKey,
+  );
+
+  runApp(const ProviderScope(child: ImmobilierApp()));
 }
 
-class ImmobilierApp extends StatelessWidget {
+class ImmobilierApp extends ConsumerWidget {
   const ImmobilierApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(routerProvider);
+    
     return MaterialApp.router(
       title: 'Immobilier',
       debugShowCheckedModeBanner: false,
-      routerConfig: appRouter,
+      routerConfig: router,
       theme: ThemeData(
         useMaterial3: true,
         fontFamily: AppFontConfig.fontFamily,
@@ -126,36 +139,18 @@ const List<HomeProperty> fakeProperties = [
 // Home Screen
 // --------------------------------------------------
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   final Set<String> _favorites = <String>{};
 
-  @override
-  void initState() {
-    super.initState();
-    fakeLoggedIn.addListener(_clearFavoritesOnLogout);
-  }
-
-  @override
-  void dispose() {
-    fakeLoggedIn.removeListener(_clearFavoritesOnLogout);
-    super.dispose();
-  }
-
-  void _clearFavoritesOnLogout() {
-    if (!fakeLoggedIn.value && _favorites.isNotEmpty) {
-      setState(_favorites.clear);
-    }
-  }
-
   void _toggleFavorite(String id) {
-    if (!fakeLoggedIn.value) {
+    if (ref.read(sessionProvider) == null) {
       context.push(AppRoutes.loginLocation(from: AppRoutes.home));
       return;
     }
@@ -200,6 +195,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(sessionProvider, (previous, next) {
+      if (next == null && _favorites.isNotEmpty) {
+        setState(_favorites.clear);
+      }
+    });
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
