@@ -14,9 +14,11 @@ import { StatusBar } from 'expo-status-bar';
 import PropertyCard, {
   PropertyCardData,
   PropertyCardVariant,
-} from '../components/PropertyCard';
+} from '../../components/PropertyCard';
 
-import { theme, spacing, radius, typography } from '../theme';
+import { theme, spacing, radius, typography } from '../../theme';
+import { useRouter, usePathname } from 'expo-router';
+import { getCurrentUser } from '../../services/authService';
 
 // --------------------------------------------------
 // Types
@@ -97,6 +99,29 @@ const fakeProperties: Property[] = [
 export default function HomeScreen() {
   const [favorites, setFavorites] = useState<string[]>([]);
 
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const handleFavoritePress = async (propertyId: string) => {
+    // Check whether the user is authenticated.
+    const user = await getCurrentUser();
+
+    // Guest users must sign in before favoriting.
+    if (!user) {
+      router.push({
+        pathname: '/login',
+        params: { from: pathname },
+      });
+
+      return;
+    }
+
+    // User is authenticated: execute your existing favorite logic here.
+    // For example:
+    // await favoriteService.toggleFavorite(propertyId);
+    await toggleFavorite(propertyId);
+  };
+
   // -----------------------------------------------
   // Toggle Favorite
   // -----------------------------------------------
@@ -127,7 +152,7 @@ export default function HomeScreen() {
                 : undefined
             }
             favorite={favorites.includes(item.id)}
-            onFavoritePress={() => toggleFavorite(item.id)}
+            onFavoritePress={() => handleFavoritePress(item.id)}
             onPress={() => {
               console.log('Selected property:', item.id);
             }}
