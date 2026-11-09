@@ -1,33 +1,73 @@
 abstract final class Validators {
-  static final RegExp _emailRegex =
-      RegExp(r'^[\w.+\-]+@[\w\-]+(\.[\w\-]+)+$');
+  // Validation constants
+  static const int minFullNameLength = 3;
+  static const int minPasswordLength = 6;
 
+  // Basic email format validation
+  static final RegExp _emailRegex = RegExp(
+    r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
+    caseSensitive: false,
+  );
+
+  /// Validates a user's full name.
   static String? fullName(String? value) {
-    final v = value?.trim() ?? '';
-    if (v.isEmpty) return 'Le nom complet est obligatoire';
-    if (v.length < 3) return 'Le nom est trop court';
+    final name = value?.trim() ?? '';
+
+    if (name.isEmpty) {
+      return 'Full name is required.';
+    }
+
+    if (name.runes.length < minFullNameLength) {
+      return 'Full name must contain at least $minFullNameLength characters.';
+    }
+
     return null;
   }
 
+  /// Validates an email address.
   static String? email(String? value) {
-    final v = value?.trim() ?? '';
-    if (v.isEmpty) return "L'email est obligatoire";
-    if (!_emailRegex.hasMatch(v)) return 'Email invalide';
+    final email = value?.trim() ?? '';
+
+    if (email.isEmpty) {
+      return 'Email address is required.';
+    }
+
+    if (!_emailRegex.hasMatch(email)) {
+      return 'Please enter a valid email address.';
+    }
+
     return null;
   }
 
-  // Supabase par défaut: 6 caractères minimum
+  /// Validates a password.
   static String? password(String? value) {
-    final v = value ?? '';
-    if (v.isEmpty) return 'Le mot de passe est obligatoire';
-    if (v.length < 6) return 'Minimum 6 caractères';
+    // Do not trim passwords because whitespace may be intentional.
+    final password = value ?? '';
+
+    if (password.isEmpty) {
+      return 'Password is required.';
+    }
+
+    if (password.length < minPasswordLength) {
+      return 'Password must contain at least $minPasswordLength characters.';
+    }
+
     return null;
   }
 
-  static String? Function(String?) confirmPassword(String Function() original) {
+  /// Returns a validator that checks whether two passwords match.
+  static String? Function(String?) confirmPassword(
+    String Function() getOriginalPassword,
+  ) {
     return (value) {
-      if (value == null || value.isEmpty) return 'Confirmez le mot de passe';
-      if (value != original()) return 'Les mots de passe ne correspondent pas';
+      if (value == null || value.isEmpty) {
+        return 'Please confirm your password.';
+      }
+
+      if (value != getOriginalPassword()) {
+        return 'Passwords do not match.';
+      }
+
       return null;
     };
   }
