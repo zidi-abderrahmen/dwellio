@@ -1,4 +1,3 @@
-
 import { MD3LightTheme, configureFonts } from 'react-native-paper';
 import { Platform } from 'react-native';
 
@@ -25,6 +24,9 @@ const colors = {
 
   favorite: '#D32F2F',
   placeholder: '#70787D',
+
+  featured: '#FFDDB8',
+  onFeatured: '#2C1600',
 };
 
 // Standard typography
