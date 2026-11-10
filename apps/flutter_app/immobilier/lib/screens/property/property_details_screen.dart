@@ -1,19 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
 import '../../models/property_models.dart';
 import '../../services/property_service.dart';
 
 // --------------------------------------------------
-// Helpers
+// Formatting helpers
 // --------------------------------------------------
 
-String formatPrice(num price) {
-  final formattedPrice = NumberFormat('#,##0.##', 'fr_TN')
-      .format(price)
-      .replaceAll(RegExp(r'[\u00A0\u202F]'), ' ');
+String formatPrice(double price) {
+  final fixedPrice = price.toStringAsFixed(2);
+  final parts = fixedPrice.split('.');
+
+  final integerPart = parts[0];
+  final decimalPart = parts[1].replaceFirst(RegExp(r'0+$'), '');
+
+  final groupedInteger = integerPart.replaceAllMapped(
+    RegExp(r'\B(?=(\d{3})+(?!\d))'),
+    (_) => ' ',
+  );
+
+  final formattedPrice = decimalPart.isEmpty
+      ? groupedInteger
+      : '$groupedInteger,$decimalPart';
 
   return '$formattedPrice TND';
 }
@@ -22,17 +33,17 @@ String formatNullable(num? value, [String suffix = '']) {
   return value == null ? '—' : '$value$suffix';
 }
 
-String getPropertyTypeLabel(PropertyType type) {
-  const labels = <PropertyType, String>{
-    PropertyType.apartment: 'Apartment',
-    PropertyType.house: 'House',
-    PropertyType.villa: 'Villa',
-    PropertyType.land: 'Land',
-    PropertyType.office: 'Office',
-    PropertyType.shop: 'Shop',
+String getPropertyTypeLabel(String type) {
+  const labels = <String, String>{
+    'apartment': 'Apartment',
+    'house': 'House',
+    'villa': 'Villa',
+    'land': 'Land',
+    'office': 'Office',
+    'shop': 'Shop',
   };
 
-  return labels[type]!;
+  return labels[type] ?? type;
 }
 
 // --------------------------------------------------
@@ -54,12 +65,17 @@ class PropertyDetailsScreen extends StatefulWidget {
 
 class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   PropertyWithRelations? _property;
+
   bool _loading = true;
+
   String? _loadError;
+
   int _activeImageIndex = 0;
 
+  final PageController _imageController = PageController();
+
   // -----------------------------------------------
-  // Load Property
+  // Lifecycle
   // -----------------------------------------------
 
   @override
@@ -77,12 +93,18 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _imageController.dispose();
+    super.dispose();
+  }
+
+  // -----------------------------------------------
+  // Load property from Supabase
+  // -----------------------------------------------
+
   Future<void> _loadProperty() async {
-    final id = widget.propertyId.trim();
-
-    if (id.isEmpty) {
-      if (!mounted) return;
-
+    if (widget.propertyId.trim().isEmpty) {
       setState(() {
         _loadError = 'The property ID is invalid.';
         _loading = false;
@@ -90,15 +112,13 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       return;
     }
 
-    if (mounted) {
-      setState(() {
-        _loading = true;
-        _loadError = null;
-      });
-    }
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
 
     try {
-      final result = await getPropertyById(id);
+      final result = await getPropertyById(widget.propertyId);
 
       if (!mounted) return;
 
@@ -106,6 +126,10 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
         _property = result;
         _activeImageIndex = 0;
       });
+
+      if (_imageController.hasClients) {
+        _imageController.jumpToPage(0);
+      }
     } catch (error) {
       debugPrint('Failed to load property details: $error');
 
@@ -126,55 +150,37 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   }
 
   // -----------------------------------------------
-  // Back Navigation
+  // Back navigation
   // -----------------------------------------------
 
   void _goBack() {
-    Navigator.of(context).maybePop();
+    if (context.canPop()) {
+      context.pop();
+    }
   }
 
   // -----------------------------------------------
-  // Screen
+  // Loading screen
   // -----------------------------------------------
 
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return _buildLoadingScreen();
-    }
-
-    if (_loadError != null || _property == null) {
-      return _buildErrorScreen();
-    }
-
-    final property = _property!;
-    final owner = property.profiles;
-    final images = List<PropertyImage>.from(property.propertyImages)
-      ..sort((first, second) => first.position.compareTo(second.position));
-
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark,
-      child: Scaffold(
-        backgroundColor: AppColors.background,
-        body: SafeArea(
-          top: true,
-          bottom: false,
-          left: false,
-          right: false,
+  Widget _buildLoadingScreen() {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Center(
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _buildTopBar(),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.only(bottom: 32),
-                  physics: const ClampingScrollPhysics(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildImageGallery(images),
-                      _buildDetailsContent(property, owner),
-                    ],
-                  ),
+              const CircularProgressIndicator(
+                color: AppColors.primary,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Loading property details...',
+                style: TextStyle(
+                  fontFamily: AppFontConfig.fontFamily,
+                  fontSize: 14,
+                  color: AppColors.secondary,
                 ),
               ),
             ],
@@ -185,109 +191,72 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   }
 
   // -----------------------------------------------
-  // Loading State
-  // -----------------------------------------------
-
-  Widget _buildLoadingScreen() {
-    final textTheme = Theme.of(context).textTheme;
-
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark,
-      child: Scaffold(
-        backgroundColor: AppColors.background,
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const CircularProgressIndicator(
-                    color: AppColors.primary,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Loading property details...',
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: AppColors.secondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // -----------------------------------------------
-  // Error State
+  // Error screen
   // -----------------------------------------------
 
   Widget _buildErrorScreen() {
-    final textTheme = Theme.of(context).textTheme;
-
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark,
-      child: Scaffold(
-        backgroundColor: AppColors.background,
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.error_outline,
-                    size: 42,
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  size: 42,
+                  color: AppColors.error,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _loadError ?? 'This property could not be found.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: AppFontConfig.fontFamily,
+                    fontSize: 14,
                     color: AppColors.error,
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _loadError ?? 'This property could not be found.',
-                    textAlign: TextAlign.center,
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: AppColors.error,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 44,
-                    child: ElevatedButton(
-                      onPressed: _loadProperty,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: AppColors.onPrimary,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  height: 44,
+                  child: ElevatedButton(
+                    onPressed: _loadProperty,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: AppColors.onPrimary,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
                       ),
-                      child: Text(
-                        'Try again',
-                        style: textTheme.labelLarge?.copyWith(
-                          color: AppColors.onPrimary,
-                        ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: _goBack,
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.all(8),
-                      foregroundColor: AppColors.primary,
                     ),
                     child: Text(
-                      'Go back',
-                      style: textTheme.labelLarge?.copyWith(
-                        color: AppColors.primary,
+                      'Try again',
+                      style: TextStyle(
+                        fontFamily: AppFontConfig.fontFamily,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+                TextButton(
+                  onPressed: _goBack,
+                  child: Text(
+                    'Go back',
+                    style: TextStyle(
+                      fontFamily: AppFontConfig.fontFamily,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -296,80 +265,74 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   }
 
   // -----------------------------------------------
-  // Top Bar
+  // Top bar
   // -----------------------------------------------
 
   Widget _buildTopBar() {
-    final textTheme = Theme.of(context).textTheme;
-
-    return SizedBox(
-      height: 56,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Semantics(
-              button: true,
-              label: 'Go back',
-              child: Material(
-                color: AppColors.surfaceVariant,
-                shape: const CircleBorder(),
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: _goBack,
-                  child: const SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: Icon(
-                      Icons.arrow_back,
-                      size: 22,
-                      color: AppColors.onSurface,
-                    ),
-                  ),
+    return Container(
+      constraints: const BoxConstraints(minHeight: 56),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Material(
+            color: AppColors.surface,
+            shape: const CircleBorder(),
+            child: InkWell(
+              onTap: _goBack,
+              customBorder: const CircleBorder(),
+              child: const SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(
+                  Icons.arrow_back,
+                  size: 22,
+                  color: AppColors.onSurface,
                 ),
               ),
             ),
-            Text(
-              'Property details',
-              style: textTheme.titleMedium?.copyWith(
-                color: AppColors.onBackground,
-              ),
+          ),
+          Text(
+            'Property details',
+            style: TextStyle(
+              fontFamily: AppFontConfig.fontFamily,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: AppColors.onSurface,
             ),
-            const SizedBox(width: 40, height: 40),
-          ],
-        ),
+          ),
+          const SizedBox(width: 40, height: 40),
+        ],
       ),
     );
   }
 
   // -----------------------------------------------
-  // Image Gallery
+  // Property image gallery
   // -----------------------------------------------
 
   Widget _buildImageGallery(List<PropertyImage> images) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     if (images.isEmpty) {
       return Container(
         height: 220,
         width: double.infinity,
-        alignment: Alignment.center,
-        color: colorScheme.outlineVariant,
+        color: AppColors.surface,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               Icons.home_outlined,
               size: 56,
-              color: colorScheme.outline,
+              color: AppColors.secondary,
             ),
             const SizedBox(height: 8),
             Text(
               'No images available',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppColors.secondary,
-                  ),
+              style: TextStyle(
+                fontFamily: AppFontConfig.fontFamily,
+                fontSize: 14,
+                color: AppColors.secondary,
+              ),
             ),
           ],
         ),
@@ -378,13 +341,13 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
 
     return Container(
       width: double.infinity,
-      color: colorScheme.outlineVariant,
+      color: AppColors.surface,
       child: Column(
         children: [
           SizedBox(
-            width: double.infinity,
             height: 280,
             child: PageView.builder(
+              controller: _imageController,
               itemCount: images.length,
               onPageChanged: (index) {
                 setState(() {
@@ -392,42 +355,63 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                 });
               },
               itemBuilder: (context, index) {
-                return Image.network(
-                  images[index].imageUrl,
+                return SizedBox(
                   width: double.infinity,
                   height: 280,
-                  fit: BoxFit.cover,
+                  child: Image.network(
+                    images[index].imageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        color: AppColors.surface,
+                        child: const Center(
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            size: 48,
+                            color: AppColors.secondary,
+                          ),
+                        ),
+                      );
+                    },
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.primary,
+                        ),
+                      );
+                    },
+                  ),
                 );
               },
             ),
           ),
+
           if (images.length > 1)
-            Semantics(
-              label: 'Image pagination',
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 30),
-                width: double.infinity,
-                color: AppColors.background,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: List.generate(images.length, (index) {
+            Container(
+              constraints: const BoxConstraints(minHeight: 30),
+              color: AppColors.background,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  images.length,
+                  (index) {
                     final isActive = index == _activeImageIndex;
 
-                    return Container(
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
                       width: isActive ? 18 : 7,
                       height: 7,
-                      margin: EdgeInsets.only(
-                        right: index == images.length - 1 ? 0 : 4,
-                      ),
                       decoration: BoxDecoration(
                         color: isActive
                             ? AppColors.primary
-                            : colorScheme.outline,
-                        borderRadius: BorderRadius.circular(999),
+                            : AppColors.secondary.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(100),
                       ),
                     );
-                  }),
+                  },
                 ),
               ),
             ),
@@ -437,265 +421,223 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   }
 
   // -----------------------------------------------
-  // Property Details Content
+  // Price and title
   // -----------------------------------------------
 
-  Widget _buildDetailsContent(
-    PropertyWithRelations property,
-    OwnerProfile? owner,
-  ) {
-    final textTheme = Theme.of(context).textTheme;
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Price
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
+  Widget _buildPriceAndTitle(PropertyWithRelations property) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(
+              formatPrice(property.price),
+              style: TextStyle(
+                fontFamily: AppFontConfig.fontFamily,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primary,
+              ),
+            ),
+            if (property.listingType == 'rent') ...[
+              const SizedBox(width: 4),
               Text(
-                formatPrice(property.price),
-                style: textTheme.headlineSmall?.copyWith(
-                  color: AppColors.primary,
+                '/ month',
+                style: TextStyle(
+                  fontFamily: AppFontConfig.fontFamily,
+                  fontSize: 14,
+                  color: AppColors.secondary,
                 ),
               ),
-              if (property.listingType == ListingType.rent) ...[
-                const SizedBox(width: 4),
-                Text(
-                  '/ month',
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: AppColors.secondary,
-                  ),
-                ),
-              ],
             ],
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          property.title,
+          style: TextStyle(
+            fontFamily: AppFontConfig.fontFamily,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: AppColors.onSurface,
           ),
+        ),
+      ],
+    );
+  }
 
-          const SizedBox(height: 16),
+  // -----------------------------------------------
+  // Location
+  // -----------------------------------------------
 
-          // Title
-          Text(
-            property.title,
-            style: textTheme.headlineSmall?.copyWith(
-              color: AppColors.onBackground,
+  Widget _buildLocation(PropertyWithRelations property) {
+    final location = property.address != null
+        ? '${property.address}, ${property.city}'
+        : property.city;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(
+          Icons.location_on_outlined,
+          size: 18,
+          color: AppColors.secondary,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            location,
+            style: TextStyle(
+              fontFamily: AppFontConfig.fontFamily,
+              fontSize: 14,
+              color: AppColors.secondary,
             ),
           ),
+        ),
+      ],
+    );
+  }
 
-          const SizedBox(height: 16),
+  // -----------------------------------------------
+  // Property tags
+  // -----------------------------------------------
 
-          // Location
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.location_on_outlined,
-                size: 18,
+  Widget _buildTags(PropertyWithRelations property) {
+    final tags = [
+      getPropertyTypeLabel(property.propertyType),
+      property.listingType == 'sale' ? 'For sale' : 'For rent',
+      property.status,
+    ];
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: tags.map((tag) {
+        return Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 6,
+          ),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(100),
+          ),
+          child: Text(
+            tag,
+            style: TextStyle(
+              fontFamily: AppFontConfig.fontFamily,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: AppColors.secondary,
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  // -----------------------------------------------
+  // Property specifications
+  // -----------------------------------------------
+
+  Widget _buildSpecification({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Expanded(
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 104),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 22,
+              color: AppColors.primary,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: TextStyle(
+                fontFamily: AppFontConfig.fontFamily,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.onSurface,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: AppFontConfig.fontFamily,
+                fontSize: 12,
                 color: AppColors.secondary,
               ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  property.address != null && property.address!.isNotEmpty
-                      ? '${property.address}, ${property.city}'
-                      : property.city,
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: AppColors.secondary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
-          // Tags
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildTag(getPropertyTypeLabel(property.propertyType)),
-              _buildTag(
-                property.listingType == ListingType.sale
-                    ? 'For sale'
-                    : 'For rent',
-              ),
-              _buildTag(property.status.name),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
-          // Property Overview
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Property overview',
-                style: textTheme.titleLarge?.copyWith(
-                  color: AppColors.onBackground,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildSpecification(
-                      Icons.aspect_ratio,
-                      'Surface',
-                      formatNullable(property.surfaceM2, ' m²'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _buildSpecification(
-                      Icons.bed_outlined,
-                      'Rooms',
-                      formatNullable(property.rooms),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _buildSpecification(
-                      Icons.water_drop_outlined,
-                      'Bathrooms',
-                      formatNullable(property.bathrooms),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
-          // Description
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Description',
-                style: textTheme.titleLarge?.copyWith(
-                  color: AppColors.onBackground,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                property.description?.trim().isNotEmpty == true
-                    ? property.description!.trim()
-                    : 'No description provided.',
-                style: textTheme.bodyMedium?.copyWith(
-                  color: AppColors.onBackground,
-                  height: 24 / 14,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
-          // Owner
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Owner',
-                style: textTheme.titleLarge?.copyWith(
-                  color: AppColors.onBackground,
-                ),
-              ),
-              const SizedBox(height: 12),
-              _buildOwnerCard(owner),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // -----------------------------------------------
-  // Tag
-  // -----------------------------------------------
-
-  Widget _buildTag(String label) {
-    final textTheme = Theme.of(context).textTheme;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 4,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceVariant,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: textTheme.labelMedium?.copyWith(
-          color: AppColors.secondary,
+            ),
+          ],
         ),
       ),
     );
   }
 
+  Widget _buildSpecifications(PropertyWithRelations property) {
+    return Row(
+      children: [
+        _buildSpecification(
+          icon: Icons.aspect_ratio_outlined,
+          label: 'Surface',
+          value: formatNullable(property.surfaceM2, ' m²'),
+        ),
+        const SizedBox(width: 8),
+        _buildSpecification(
+          icon: Icons.bed_outlined,
+          label: 'Rooms',
+          value: formatNullable(property.rooms),
+        ),
+        const SizedBox(width: 8),
+        _buildSpecification(
+          icon: Icons.water_drop_outlined,
+          label: 'Bathrooms',
+          value: formatNullable(property.bathrooms),
+        ),
+      ],
+    );
+  }
+
   // -----------------------------------------------
-  // Specification
+  // Description
   // -----------------------------------------------
 
-  Widget _buildSpecification(
-    IconData icon,
-    String label,
-    String value,
-  ) {
-    final textTheme = Theme.of(context).textTheme;
+  Widget _buildDescription(PropertyWithRelations property) {
+    final description = property.description?.trim().isNotEmpty == true
+        ? property.description!.trim()
+        : 'No description provided.';
 
-    return Container(
-      constraints: const BoxConstraints(minHeight: 104),
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            size: 22,
-            color: AppColors.primary,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            textAlign: TextAlign.center,
-            style: textTheme.titleMedium?.copyWith(
-              color: AppColors.onSurface,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: textTheme.bodySmall?.copyWith(
-              color: AppColors.secondary,
-            ),
-          ),
-        ],
+    return Text(
+      description,
+      style: TextStyle(
+        fontFamily: AppFontConfig.fontFamily,
+        fontSize: 14,
+        height: 1.7,
+        color: AppColors.onSurface,
       ),
     );
   }
 
   // -----------------------------------------------
-  // Owner Card
+  // Owner
   // -----------------------------------------------
 
-  Widget _buildOwnerCard(OwnerProfile? owner) {
-    final textTheme = Theme.of(context).textTheme;
-    final avatarUrl = owner?.avatarUrl;
-    final ownerName = owner?.fullName;
-    final ownerPhone = owner?.phone;
+  Widget _buildOwner(PropertyWithRelations property) {
+    final owner = property.profiles;
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -705,48 +647,46 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       ),
       child: Row(
         children: [
-          if (avatarUrl != null && avatarUrl.isNotEmpty)
+          if (owner?.avatarUrl != null &&
+              owner!.avatarUrl!.isNotEmpty)
             ClipOval(
               child: Image.network(
-                avatarUrl,
+                owner.avatarUrl!,
                 width: 48,
                 height: 48,
                 fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return _buildOwnerAvatarPlaceholder();
+                },
               ),
             )
           else
-            Container(
-              width: 48,
-              height: 48,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: AppColors.surfaceVariant,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: const Icon(
-                Icons.person,
-                size: 22,
-                color: AppColors.secondary,
-              ),
-            ),
+            _buildOwnerAvatarPlaceholder(),
+
           const SizedBox(width: 12),
+
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  ownerName != null && ownerName.isNotEmpty
-                      ? ownerName
+                  owner?.fullName?.isNotEmpty == true
+                      ? owner!.fullName!
                       : 'Property owner',
-                  style: textTheme.titleMedium?.copyWith(
+                  style: TextStyle(
+                    fontFamily: AppFontConfig.fontFamily,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
                     color: AppColors.onSurface,
                   ),
                 ),
-                if (ownerPhone != null && ownerPhone.isNotEmpty) ...[
-                  const SizedBox(height: 2),
+                if (owner?.phone != null && owner!.phone!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
                   Text(
-                    ownerPhone,
-                    style: textTheme.bodyMedium?.copyWith(
+                    owner.phone!,
+                    style: TextStyle(
+                      fontFamily: AppFontConfig.fontFamily,
+                      fontSize: 14,
                       color: AppColors.secondary,
                     ),
                   ),
@@ -755,6 +695,145 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildOwnerAvatarPlaceholder() {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppColors.background,
+      ),
+      child: const Icon(
+        Icons.person,
+        size: 22,
+        color: AppColors.secondary,
+      ),
+    );
+  }
+
+  // -----------------------------------------------
+  // Section
+  // -----------------------------------------------
+
+  Widget _buildSection({
+    required String title,
+    required Widget child,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontFamily: AppFontConfig.fontFamily,
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            color: AppColors.onSurface,
+          ),
+        ),
+        const SizedBox(height: 12),
+        child,
+      ],
+    );
+  }
+
+  // -----------------------------------------------
+  // Build
+  // -----------------------------------------------
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.dark,
+        child: _buildLoadingScreen(),
+      );
+    }
+
+    if (_loadError != null || _property == null) {
+      return AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.dark,
+        child: _buildErrorScreen(),
+      );
+    }
+
+    final property = _property!;
+
+    final images = List<PropertyImage>.from(property.propertyImages)
+      ..sort(
+        (first, second) => first.position.compareTo(second.position),
+      );
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          top: true,
+          bottom: false,
+          child: Column(
+            children: [
+              _buildTopBar(),
+
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildImageGallery(images),
+
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildPriceAndTitle(property),
+
+                            const SizedBox(height: 16),
+
+                            _buildLocation(property),
+
+                            const SizedBox(height: 16),
+
+                            _buildTags(property),
+
+                            const SizedBox(height: 24),
+
+                            _buildSection(
+                              title: 'Property overview',
+                              child: _buildSpecifications(property),
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            _buildSection(
+                              title: 'Description',
+                              child: _buildDescription(property),
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            _buildSection(
+                              title: 'Owner',
+                              child: _buildOwner(property),
+                            ),
+
+                            const SizedBox(height: 32),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
