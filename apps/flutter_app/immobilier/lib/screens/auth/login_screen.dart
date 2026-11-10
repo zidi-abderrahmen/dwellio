@@ -7,15 +7,15 @@ import '../../core/theme.dart';
 import '../../core/validators.dart';
 import '../../providers/auth_providers.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/auth_form_widgets.dart';
 
-class LoginScreen extends ConsumerStatefulWidget  {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key, this.from});
 
   final String? from;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
-
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
@@ -41,126 +41,105 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
-Future<void> _submit() async {
-  if (!_formKey.currentState!.validate()) return;
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
 
-  FocusScope.of(context).unfocus();
-  setState(() => _loading = true);
+    FocusScope.of(context).unfocus();
+    setState(() => _loading = true);
 
-  try {
-    await ref.read(authServiceProvider).signIn(
-          email: _emailController.text,
-          password: _passwordController.text,
-        );
-    // ma n3amlou ta9ribn navigation: el router yredirecti wa7du
-  } on AuthFailure catch (e) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(e.message)));
-  } finally {
-    if (mounted) setState(() => _loading = false);
+    try {
+      await ref.read(authServiceProvider).signIn(
+            email: _emailController.text,
+            password: _passwordController.text,
+          );
+
+      if (!mounted) return;
+
+      context.go(AppRoutes.home);
+    } on AuthFailure catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
-}
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: _loading ? null : _close,
-        ),
+    return AuthScaffold(
+      leading: IconButton(
+        icon: const Icon(Icons.close),
+        color: AppColors.onSurface,
+        onPressed: _loading ? null : _close,
       ),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Immobilier',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context)
-                          .textTheme
-                          .headlineMedium
-                          ?.copyWith(color: AppColors.primary),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const AuthHeader(
+            title: 'Immobilier',
+            subtitle: 'Sign in to your account',
+          ),
+          const SizedBox(height: 24),
+          AuthCard(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextFormField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.email],
+                    decoration: authInputDecoration(
+                      label: 'Email',
+                      icon: Icons.email_outlined,
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Connectez-vous à votre compte',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: AppColors.secondary),
-                    ),
-                    const SizedBox(height: 32),
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      autofillHints: const [AutofillHints.email],
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: Icon(Icons.email_outlined),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: Validators.email,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: _obscure,
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) => _submit(),
-                      autofillHints: const [AutofillHints.password],
-                      decoration: InputDecoration(
-                        labelText: 'Mot de passe',
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          icon: Icon(_obscure
+                    validator: Validators.email,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: _obscure,
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) => _submit(),
+                    autofillHints: const [AutofillHints.password],
+                    decoration: authInputDecoration(
+                      label: 'Password',
+                      icon: Icons.lock_outline,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscure
                               ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined),
-                          onPressed: () =>
-                              setState(() => _obscure = !_obscure),
+                              : Icons.visibility_off_outlined,
                         ),
+                        onPressed: () => setState(() => _obscure = !_obscure),
                       ),
-                      validator: Validators.password,
                     ),
-                    const SizedBox(height: 24),
-                    FilledButton(
-                      onPressed: _loading ? null : _submit,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                      ),
-                      child: _loading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Se connecter'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton(
-                      onPressed: _loading
-                          ? null
-                          : () => context.go(
-                                AppRoutes.registerLocation(from: widget.from),
-                              ),
-                      child: const Text("Pas de compte ? S'inscrire"),
-                    ),
-                  ],
-                ),
+                    validator: Validators.password,
+                  ),
+                  const SizedBox(height: 24),
+                  AuthSubmitButton(
+                    label: 'Sign in',
+                    loading: _loading,
+                    onPressed: _submit,
+                  ),
+                ],
               ),
             ),
           ),
-        ),
+          const SizedBox(height: 16),
+          AuthSwitchPrompt(
+            prompt: "Don't have an account?",
+            actionLabel: 'Sign up',
+            onPressed: _loading
+                ? null
+                : () => context.go(
+                      AppRoutes.registerLocation(from: widget.from),
+                    ),
+          ),
+        ],
       ),
     );
   }
