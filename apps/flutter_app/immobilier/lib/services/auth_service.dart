@@ -1,22 +1,39 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+/// Represents an application-level authentication error.
 class AuthFailure implements Exception {
   const AuthFailure(this.message);
+
   final String message;
 
   @override
   String toString() => message;
 }
 
+/// Handles authentication operations through Supabase Auth.
 class AuthService {
   AuthService(this._client);
 
   final SupabaseClient _client;
 
+  // ---------------------------------------------------------------------------
+  // Authentication state
+  // ---------------------------------------------------------------------------
+
+  /// Stream of authentication state changes.
   Stream<AuthState> get authChanges => _client.auth.onAuthStateChange;
+
+  /// Returns the current authenticated session, or null if unauthenticated.
   Session? get currentSession => _client.auth.currentSession;
+
+  /// Returns the currently authenticated user, or null if unauthenticated.
   User? get currentUser => _client.auth.currentUser;
 
+  // ---------------------------------------------------------------------------
+  // Authentication operations
+  // ---------------------------------------------------------------------------
+
+  /// Registers a new user with their full name, email, and password.
   Future<AuthResponse> signUp({
     required String fullName,
     required String email,
@@ -26,17 +43,20 @@ class AuthService {
       return await _client.auth.signUp(
         email: email.trim(),
         password: password,
-        data: {'full_name': fullName.trim()},
+        data: {
+          'full_name': fullName.trim(),
+        },
       );
     } on AuthException catch (e) {
       throw AuthFailure(_friendlyMessage(e));
     } catch (_) {
       throw const AuthFailure(
-        'Problème de connexion. Vérifiez votre internet.',
+        'Connection problem. Please check your internet connection.',
       );
     }
   }
 
+  /// Authenticates an existing user using their email and password.
   Future<AuthResponse> signIn({
     required String email,
     required String password,
@@ -50,133 +70,82 @@ class AuthService {
       throw AuthFailure(_friendlyMessage(e));
     } catch (_) {
       throw const AuthFailure(
-        'Problème de connexion. Vérifiez votre internet.',
+        'Connection problem. Please check your internet connection.',
       );
     }
   }
 
-  Future<Map<String, dynamic>> getProfile() async {
-    final user = _client.auth.currentUser;
-    if (user == null) {
-      throw const AuthFailure('You must be signed in to view your profile.');
-    }
-
-    try {
-      final profile = await _client
-          .from('profiles')
-          .select('full_name, phone, avatar_url, bio')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      if (profile == null) {
-        throw const AuthFailure(
-          'Your profile record was not found. Please contact support.',
-        );
-      }
-
-      return profile;
-    } on AuthFailure {
-      rethrow;
-    } on PostgrestException catch (e) {
-      throw AuthFailure(e.message);
-    } catch (_) {
-      throw const AuthFailure('Unable to load your profile. Please try again.');
-    }
-  }
-
-  Future<UserResponse> updateProfile({
-    required String fullName,
-    required String phone,
-    required String avatarUrl,
-    required String bio,
-    String? password,
-  }) async {
-    final user = _client.auth.currentUser;
-    if (user == null) {
-      throw const AuthFailure('You must be signed in to update your profile.');
-    }
-
-    try {
-      final response = await _client.auth.updateUser(
-        UserAttributes(
-          data: {
-            'full_name': fullName.trim(),
-            'phone': phone.trim(),
-            'avatar_url': avatarUrl.trim(),
-            'bio': bio.trim(),
-          },
-          password: password == null || password.isEmpty ? null : password,
-        ),
-      );
-      final updatedProfile = await _client
-          .from('profiles')
-          .update({
-            'full_name': fullName.trim(),
-            'phone': phone.trim(),
-            'avatar_url': avatarUrl.trim(),
-            'bio': bio.trim(),
-          })
-          .eq('id', user.id)
-          .select('id')
-          .maybeSingle();
-
-      if (updatedProfile == null) {
-        throw const AuthFailure(
-          'Your profile record was not found. Please contact support.',
-        );
-      }
-
-      return response;
-    } on AuthException catch (e) {
-      throw AuthFailure(_friendlyMessage(e));
-    } on AuthFailure {
-      rethrow;
-    } on PostgrestException catch (e) {
-      throw AuthFailure(e.message);
-    } catch (_) {
-      throw const AuthFailure(
-        'Problème de connexion. Vérifiez votre internet.',
-      );
-    }
-  }
-
+  /// Signs out the currently authenticated user.
   Future<void> signOut() async {
     try {
       await _client.auth.signOut();
     } on AuthException catch (e) {
       throw AuthFailure(_friendlyMessage(e));
     } catch (_) {
-      throw const AuthFailure('Impossible de se déconnecter. Réessayez.');
+      throw const AuthFailure(
+        'Unable to sign out. Please try again.',
+      );
     }
   }
 
-  String _friendlyMessage(AuthException e) {
-    if (e is AuthRetryableFetchException) {
-      return 'Problème de connexion. Vérifiez votre internet.';
+  /// Updates the password of the currently authenticated user.
+  Future<void> updatePassword(String password) async {
+    try {
+      await _client.auth.updateUser(
+        UserAttributes(password: password),
+      );
+    } on AuthException catch (e) {
+      throw AuthFailure(_friendlyMessage(e));
+    } catch (_) {
+      throw const AuthFailure(
+        'Unable to update your password. Please try again.',
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Error handling
+  // ---------------------------------------------------------------------------
+
+  /// Converts Supabase authentication errors into user-friendly messages.
+  String _friendlyMessage(AuthException exception) {
+    if (exception is AuthRetryableFetchException) {
+      return 'Connection problem. Please check your internet connection.';
     }
 
-    final code = e.code ?? '';
-    final msg = e.message.toLowerCase();
+    final code = exception.code ?? '';
+    final message = exception.message.toLowerCase();
 
     if (code == 'invalid_credentials' ||
-        msg.contains('invalid login credentials')) {
-      return 'Email ou mot de passe incorrect.';
+        message.contains('invalid login credentials')) {
+      return 'Incorrect email or password.';
     }
-    if (code == 'email_not_confirmed' || msg.contains('email not confirmed')) {
-      return 'Veuillez confirmer votre email avant de vous connecter.';
+
+    if (code == 'email_not_confirmed' ||
+        message.contains('email not confirmed')) {
+      return 'Please verify your email address before signing in.';
     }
-    if (code == 'user_already_exists' || msg.contains('already registered')) {
-      return 'Un compte existe déjà avec cet email.';
+
+    if (code == 'user_already_exists' ||
+        message.contains('already registered')) {
+      return 'An account with this email address already exists.';
     }
-    if (code == 'weak_password' || msg.contains('password should be')) {
-      return 'Mot de passe trop faible (6 caractères minimum).';
+
+    if (code == 'weak_password' ||
+        message.contains('password should be')) {
+      return 'Password is too weak (minimum 6 characters).';
     }
-    if (code.contains('rate_limit') || msg.contains('rate limit')) {
-      return 'Trop de tentatives. Réessayez dans quelques minutes.';
+
+    if (code.contains('rate_limit') ||
+        message.contains('rate limit')) {
+      return 'Too many attempts. Please try again in a few minutes.';
     }
-    if (code == 'email_address_invalid' || msg.contains('invalid email')) {
-      return 'Adresse email invalide.';
+
+    if (code == 'email_address_invalid' ||
+        message.contains('invalid email')) {
+      return 'Invalid email address.';
     }
-    return 'Une erreur est survenue. Réessayez.';
+
+    return 'Something went wrong. Please try again.';
   }
 }
