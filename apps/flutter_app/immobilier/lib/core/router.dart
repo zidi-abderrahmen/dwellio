@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
+import '../screens/property/property_details_screen.dart';
 import '../main.dart' show HomeScreen;
 import '../providers/auth_providers.dart';
 import '../screens/auth/login_screen.dart';
@@ -18,6 +18,7 @@ abstract final class AppRoutes {
   static const add = '/add';
   static const chats = '/chats';
   static const profile = '/profile';
+  static const propertyDetails = '/property/:id';
 
   /// Same order as the bottom navigation tabs
   static const tabs = [home, favorites, add, chats, profile];
@@ -35,6 +36,9 @@ abstract final class AppRoutes {
     if (from == null || !tabs.contains(from)) return path;
     return Uri(path: path, queryParameters: {'from': from}).toString();
   }
+
+  static String propertyDetailsLocation(String id) =>
+      '/property/${Uri.encodeComponent(id)}';
 }
 
 
@@ -74,6 +78,17 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.register,
         builder: (context, state) =>
             RegisterScreen(from: state.uri.queryParameters['from']),
+      ),
+      GoRoute(
+        path: AppRoutes.propertyDetails,
+        name: 'property-details',
+        builder: (context, state) {
+          final propertyId = state.pathParameters['id']!;
+
+          return PropertyDetailsScreen(
+            propertyId: propertyId,
+          );
+        },
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
