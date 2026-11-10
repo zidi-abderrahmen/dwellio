@@ -1,10 +1,8 @@
-// --------------------------------------------------
-// Database enum types — public.properties
-// --------------------------------------------------
-
 enum ListingType {
   sale,
-  rent,
+  rent;
+
+  String get value => name;
 }
 
 enum PropertyType {
@@ -13,59 +11,78 @@ enum PropertyType {
   villa,
   land,
   office,
-  shop,
+  shop;
+
+  String get value => name;
 }
 
 enum PropertyStatus {
   active,
   sold,
   rented,
-  hidden,
+  hidden;
+
+  String get value => name;
 }
 
-// --------------------------------------------------
-// Enum JSON helper
-// --------------------------------------------------
+/// --------------------------------------------------
+/// Helpers
+/// --------------------------------------------------
 
-T _enumFromJson<T extends Enum>(
-  List<T> values,
-  Object? value,
-  String field,
-) {
-  if (value is! String) {
-    throw FormatException('Invalid value for $field: $value');
+double _toDouble(dynamic value) {
+  if (value is num) return value.toDouble();
+  return double.parse(value.toString());
+}
+
+int? _toIntOrNull(dynamic value) {
+  if (value == null) return null;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString());
+}
+
+double? _toDoubleOrNull(dynamic value) {
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value.toString());
+}
+
+Map<String, dynamic>? _relationToMap(dynamic value) {
+  if (value == null) return null;
+
+  if (value is Map<String, dynamic>) {
+    return value;
   }
 
-  return values.firstWhere(
-    (item) => item.name == value,
-    orElse: () => throw FormatException(
-      'Unknown value "$value" for $field',
-    ),
-  );
+  if (value is List && value.isNotEmpty) {
+    final first = value.first;
+    if (first is Map<String, dynamic>) return first;
+  }
+
+  return null;
 }
 
-// --------------------------------------------------
-// Property — matches the public.properties row
-// --------------------------------------------------
+/// --------------------------------------------------
+/// Property — matches the public.properties row
+/// --------------------------------------------------
 
 class Property {
   final String id;
   final String ownerId;
   final String title;
   final String? description;
-  final ListingType listingType;
-  final PropertyType propertyType;
-  final num price;
-  final num? surfaceM2;
+  final String listingType;
+  final String propertyType;
+  final double price;
+  final double? surfaceM2;
   final int? rooms;
   final int? bathrooms;
   final String city;
   final String? address;
-  final num? latitude;
-  final num? longitude;
-  final PropertyStatus status;
-  final DateTime createdAt;
-  final DateTime updatedAt;
+  final double? latitude;
+  final double? longitude;
+  final String status;
+  final String createdAt;
+  final String updatedAt;
 
   const Property({
     required this.id,
@@ -87,66 +104,35 @@ class Property {
     required this.updatedAt,
   });
 
-  Property.fromJson(Map<String, dynamic> json)
-      : id = json['id'] as String,
-        ownerId = json['owner_id'] as String,
-        title = json['title'] as String,
-        description = json['description'] as String?,
-        listingType = _enumFromJson(
-          ListingType.values,
-          json['listing_type'],
-          'listing_type',
-        ),
-        propertyType = _enumFromJson(
-          PropertyType.values,
-          json['property_type'],
-          'property_type',
-        ),
-        price = json['price'] as num,
-        surfaceM2 = json['surface_m2'] as num?,
-        rooms = (json['rooms'] as num?)?.toInt(),
-        bathrooms = (json['bathrooms'] as num?)?.toInt(),
-        city = json['city'] as String,
-        address = json['address'] as String?,
-        latitude = json['latitude'] as num?,
-        longitude = json['longitude'] as num?,
-        status = _enumFromJson(
-          PropertyStatus.values,
-          json['status'],
-          'status',
-        ),
-        createdAt = DateTime.parse(json['created_at'] as String),
-        updatedAt = DateTime.parse(json['updated_at'] as String);
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'owner_id': ownerId,
-      'title': title,
-      'description': description,
-      'listing_type': listingType.name,
-      'property_type': propertyType.name,
-      'price': price,
-      'surface_m2': surfaceM2,
-      'rooms': rooms,
-      'bathrooms': bathrooms,
-      'city': city,
-      'address': address,
-      'latitude': latitude,
-      'longitude': longitude,
-      'status': status.name,
-      'created_at': createdAt.toIso8601String(),
-      'updated_at': updatedAt.toIso8601String(),
-    };
+  factory Property.fromJson(Map<String, dynamic> json) {
+    return Property(
+      id: json['id'] as String,
+      ownerId: json['owner_id'] as String,
+      title: json['title'] as String,
+      description: json['description'] as String?,
+      listingType: json['listing_type'] as String,
+      propertyType: json['property_type'] as String,
+      price: _toDouble(json['price']),
+      surfaceM2: _toDoubleOrNull(json['surface_m2']),
+      rooms: _toIntOrNull(json['rooms']),
+      bathrooms: _toIntOrNull(json['bathrooms']),
+      city: json['city'] as String,
+      address: json['address'] as String?,
+      latitude: _toDoubleOrNull(json['latitude']),
+      longitude: _toDoubleOrNull(json['longitude']),
+      status: json['status'] as String,
+      createdAt: json['created_at'] as String,
+      updatedAt: json['updated_at'] as String,
+    );
   }
 }
 
-// Equivalent to the old TypeScript PropertyRow alias.
+/// Kept as an alias for code that already uses the old PropertyRow name.
 typedef PropertyRow = Property;
 
-// --------------------------------------------------
-// PropertyImage — matches public.property_images
-// --------------------------------------------------
+/// --------------------------------------------------
+/// PropertyImage — matches the public.propertyImages row
+/// --------------------------------------------------
 
 class PropertyImage {
   final String id;
@@ -154,7 +140,7 @@ class PropertyImage {
   final String imageUrl;
   final String storagePath;
   final int position;
-  final DateTime createdAt;
+  final String createdAt;
 
   const PropertyImage({
     required this.id,
@@ -172,25 +158,14 @@ class PropertyImage {
       imageUrl: json['image_url'] as String,
       storagePath: json['storage_path'] as String,
       position: (json['position'] as num).toInt(),
-      createdAt: DateTime.parse(json['created_at'] as String),
+      createdAt: json['created_at'] as String,
     );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'property_id': propertyId,
-      'image_url': imageUrl,
-      'storage_path': storagePath,
-      'position': position,
-      'created_at': createdAt.toIso8601String(),
-    };
   }
 }
 
-// --------------------------------------------------
-// OwnerProfile — matches public.profiles
-// --------------------------------------------------
+/// --------------------------------------------------
+/// OwnerProfile — matches the public.profiles row
+/// --------------------------------------------------
 
 class OwnerProfile {
   final String id;
@@ -198,8 +173,8 @@ class OwnerProfile {
   final String? phone;
   final String? avatarUrl;
   final String? bio;
-  final DateTime createdAt;
-  final DateTime updatedAt;
+  final String createdAt;
+  final String updatedAt;
 
   const OwnerProfile({
     required this.id,
@@ -218,28 +193,82 @@ class OwnerProfile {
       phone: json['phone'] as String?,
       avatarUrl: json['avatar_url'] as String?,
       bio: json['bio'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
+      createdAt: json['created_at'] as String,
+      updatedAt: json['updated_at'] as String,
     );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'full_name': fullName,
-      'phone': phone,
-      'avatar_url': avatarUrl,
-      'bio': bio,
-      'created_at': createdAt.toIso8601String(),
-      'updated_at': updatedAt.toIso8601String(),
-    };
   }
 }
 
-// --------------------------------------------------
-// PropertyImagePreview
-// Pick<PropertyImage, 'image_url' | 'position'>
-// --------------------------------------------------
+/// --------------------------------------------------
+/// Property relations returned by Supabase joins
+/// --------------------------------------------------
+
+class PropertyWithRelations extends Property {
+  final List<PropertyImage> propertyImages;
+  final OwnerProfile? profiles;
+
+  const PropertyWithRelations({
+    required super.id,
+    required super.ownerId,
+    required super.title,
+    super.description,
+    required super.listingType,
+    required super.propertyType,
+    required super.price,
+    super.surfaceM2,
+    super.rooms,
+    super.bathrooms,
+    required super.city,
+    super.address,
+    super.latitude,
+    super.longitude,
+    required super.status,
+    required super.createdAt,
+    required super.updatedAt,
+    required this.propertyImages,
+    this.profiles,
+  });
+
+  factory PropertyWithRelations.fromJson(Map<String, dynamic> json) {
+    final images = (json['property_images'] as List<dynamic>? ?? [])
+        .map(
+          (image) => PropertyImage.fromJson(
+            Map<String, dynamic>.from(image as Map),
+          ),
+        )
+        .toList();
+
+    final profileJson = _relationToMap(json['profiles']);
+
+    return PropertyWithRelations(
+      id: json['id'] as String,
+      ownerId: json['owner_id'] as String,
+      title: json['title'] as String,
+      description: json['description'] as String?,
+      listingType: json['listing_type'] as String,
+      propertyType: json['property_type'] as String,
+      price: _toDouble(json['price']),
+      surfaceM2: _toDoubleOrNull(json['surface_m2']),
+      rooms: _toIntOrNull(json['rooms']),
+      bathrooms: _toIntOrNull(json['bathrooms']),
+      city: json['city'] as String,
+      address: json['address'] as String?,
+      latitude: _toDoubleOrNull(json['latitude']),
+      longitude: _toDoubleOrNull(json['longitude']),
+      status: json['status'] as String,
+      createdAt: json['created_at'] as String,
+      updatedAt: json['updated_at'] as String,
+      propertyImages: images,
+      profiles: profileJson == null
+          ? null
+          : OwnerProfile.fromJson(profileJson),
+    );
+  }
+}
+
+/// --------------------------------------------------
+/// Narrow relation types for list/search queries
+/// --------------------------------------------------
 
 class PropertyImagePreview {
   final String imageUrl;
@@ -256,19 +285,7 @@ class PropertyImagePreview {
       position: (json['position'] as num).toInt(),
     );
   }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'image_url': imageUrl,
-      'position': position,
-    };
-  }
 }
-
-// --------------------------------------------------
-// OwnerProfilePreview
-// Pick<OwnerProfile, 'full_name' | 'phone' | 'avatar_url'>
-// --------------------------------------------------
 
 class OwnerProfilePreview {
   final String? fullName;
@@ -288,100 +305,82 @@ class OwnerProfilePreview {
       avatarUrl: json['avatar_url'] as String?,
     );
   }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'full_name': fullName,
-      'phone': phone,
-      'avatar_url': avatarUrl,
-    };
-  }
 }
-
-// --------------------------------------------------
-// PropertyWithRelations
-// Property + property_images + profiles
-// --------------------------------------------------
-
-class PropertyWithRelations extends Property {
-  final List<PropertyImage> propertyImages;
-  final OwnerProfile? profiles;
-
-  PropertyWithRelations.fromJson(Map<String, dynamic> json)
-      : propertyImages = (json['property_images'] as List<dynamic>)
-            .map(
-              (item) => PropertyImage.fromJson(
-                Map<String, dynamic>.from(item as Map),
-              ),
-            )
-            .toList(),
-        profiles = json['profiles'] == null
-            ? null
-            : OwnerProfile.fromJson(
-                Map<String, dynamic>.from(json['profiles'] as Map),
-              ),
-        super.fromJson(json);
-
-  @override
-  Map<String, dynamic> toJson() {
-    return {
-      ...super.toJson(),
-      'property_images': propertyImages
-          .map((image) => image.toJson())
-          .toList(),
-      'profiles': profiles?.toJson(),
-    };
-  }
-}
-
-// --------------------------------------------------
-// PropertySearchResult
-// Property + preview relations
-// --------------------------------------------------
 
 class PropertySearchResult extends Property {
   final List<PropertyImagePreview> propertyImages;
   final OwnerProfilePreview? profiles;
 
-  PropertySearchResult.fromJson(Map<String, dynamic> json)
-      : propertyImages = (json['property_images'] as List<dynamic>)
-            .map(
-              (item) => PropertyImagePreview.fromJson(
-                Map<String, dynamic>.from(item as Map),
-              ),
-            )
-            .toList(),
-        profiles = json['profiles'] == null
-            ? null
-            : OwnerProfilePreview.fromJson(
-                Map<String, dynamic>.from(json['profiles'] as Map),
-              ),
-        super.fromJson(json);
+  const PropertySearchResult({
+    required super.id,
+    required super.ownerId,
+    required super.title,
+    super.description,
+    required super.listingType,
+    required super.propertyType,
+    required super.price,
+    super.surfaceM2,
+    super.rooms,
+    super.bathrooms,
+    required super.city,
+    super.address,
+    super.latitude,
+    super.longitude,
+    required super.status,
+    required super.createdAt,
+    required super.updatedAt,
+    required this.propertyImages,
+    this.profiles,
+  });
 
-  @override
-  Map<String, dynamic> toJson() {
-    return {
-      ...super.toJson(),
-      'property_images': propertyImages
-          .map((image) => image.toJson())
-          .toList(),
-      'profiles': profiles?.toJson(),
-    };
+  factory PropertySearchResult.fromJson(Map<String, dynamic> json) {
+    final images = (json['property_images'] as List<dynamic>? ?? [])
+        .map(
+          (image) => PropertyImagePreview.fromJson(
+            Map<String, dynamic>.from(image as Map),
+          ),
+        )
+        .toList();
+
+    final profileJson = _relationToMap(json['profiles']);
+
+    return PropertySearchResult(
+      id: json['id'] as String,
+      ownerId: json['owner_id'] as String,
+      title: json['title'] as String,
+      description: json['description'] as String?,
+      listingType: json['listing_type'] as String,
+      propertyType: json['property_type'] as String,
+      price: _toDouble(json['price']),
+      surfaceM2: _toDoubleOrNull(json['surface_m2']),
+      rooms: _toIntOrNull(json['rooms']),
+      bathrooms: _toIntOrNull(json['bathrooms']),
+      city: json['city'] as String,
+      address: json['address'] as String?,
+      latitude: _toDoubleOrNull(json['latitude']),
+      longitude: _toDoubleOrNull(json['longitude']),
+      status: json['status'] as String,
+      createdAt: json['created_at'] as String,
+      updatedAt: json['updated_at'] as String,
+      propertyImages: images,
+      profiles: profileJson == null
+          ? null
+          : OwnerProfilePreview.fromJson(profileJson),
+    );
   }
 }
 
-// --------------------------------------------------
-// PropertyCardData
-// Pick<Property, fields displayed by the card>
-// --------------------------------------------------
+/// --------------------------------------------------
+/// PropertyCard — only the fields displayed by the card
+/// --------------------------------------------------
 
 class PropertyCardData {
   final String id;
   final String title;
-  final ListingType listingType;
-  final PropertyType propertyType;
-  final num price;
-  final num? surfaceM2;
+  final String listingType;
+  final String propertyType;
+  final double price;
+  final double? surfaceM2;
   final int? rooms;
   final String city;
 
@@ -395,51 +394,4 @@ class PropertyCardData {
     this.rooms,
     required this.city,
   });
-
-  factory PropertyCardData.fromJson(Map<String, dynamic> json) {
-    return PropertyCardData(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      listingType: _enumFromJson(
-        ListingType.values,
-        json['listing_type'],
-        'listing_type',
-      ),
-      propertyType: _enumFromJson(
-        PropertyType.values,
-        json['property_type'],
-        'property_type',
-      ),
-      price: json['price'] as num,
-      surfaceM2: json['surface_m2'] as num?,
-      rooms: (json['rooms'] as num?)?.toInt(),
-      city: json['city'] as String,
-    );
-  }
-
-  factory PropertyCardData.fromProperty(Property property) {
-    return PropertyCardData(
-      id: property.id,
-      title: property.title,
-      listingType: property.listingType,
-      propertyType: property.propertyType,
-      price: property.price,
-      surfaceM2: property.surfaceM2,
-      rooms: property.rooms,
-      city: property.city,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'title': title,
-      'listing_type': listingType.name,
-      'property_type': propertyType.name,
-      'price': price,
-      'surface_m2': surfaceM2,
-      'rooms': rooms,
-      'city': city,
-    };
-  }
 }

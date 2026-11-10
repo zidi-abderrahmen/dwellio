@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +12,10 @@ import 'widgets/property_card.dart';
 import 'models/property_models.dart' as property_models;
 import 'services/property_service.dart';
 
+// --------------------------------------------------
+// Main
+// --------------------------------------------------
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -21,8 +24,16 @@ Future<void> main() async {
     anonKey: SupabaseConfig.anonKey,
   );
 
-  runApp(const ProviderScope(child: ImmobilierApp()));
+  runApp(
+    const ProviderScope(
+      child: ImmobilierApp(),
+    ),
+  );
 }
+
+// --------------------------------------------------
+// Application
+// --------------------------------------------------
 
 class ImmobilierApp extends ConsumerWidget {
   const ImmobilierApp({super.key});
@@ -54,7 +65,7 @@ class ImmobilierApp extends ConsumerWidget {
 }
 
 // --------------------------------------------------
-// Types
+// Home Property
 // --------------------------------------------------
 
 @immutable
@@ -71,11 +82,13 @@ class HomeProperty extends PropertyCardData {
     required this.address,
     required this.bathrooms,
     required this.variant,
+    required this.imageUrl,
   });
 
   final String? address;
   final int? bathrooms;
   final PropertyCardVariant variant;
+  final String? imageUrl;
 }
 
 // --------------------------------------------------
@@ -117,7 +130,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // Load properties from Supabase
   // -----------------------------------------------
 
-  Future<void> _loadProperties({bool isRefresh = false}) async {
+  Future<void> _loadProperties({
+    bool isRefresh = false,
+  }) async {
     if (!mounted) return;
 
     setState(() {
@@ -166,11 +181,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       title: item.title,
 
       listingType: ListingType.values.byName(
-        item.listingType.name,
+        item.listingType,
       ),
 
       propertyType: PropertyType.values.byName(
-        item.propertyType.name,
+        item.propertyType,
       ),
 
       price: item.price.toDouble(),
@@ -181,6 +196,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       bathrooms: item.bathrooms,
 
       variant: PropertyCardVariant.standard,
+
+      imageUrl: item.propertyImages.isNotEmpty
+        ? item.propertyImages.first.imageUrl
+        : null,
     );
   }
 
@@ -222,10 +241,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       padding: const EdgeInsets.only(bottom: 16),
       child: Center(
         child: PropertyCard(
+          image: cardProperty.imageUrl != null
+            ? NetworkImage(cardProperty.imageUrl!)
+            : null,
           property: cardProperty,
           variant: PropertyCardVariant.standard,
           currencyLabel: 'DT',
-          period: item.listingType.name == 'rent'
+          period: item.listingType == 'rent'
               ? '/ mois'
               : null,
           favorite: _favorites.contains(item.id),
@@ -335,7 +357,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Clear local favorites after logout.
     ref.listen(sessionProvider, (previous, next) {
       if (next == null && _favorites.isNotEmpty) {
-        setState(_favorites.clear);
+        setState(() {
+          _favorites.clear();
+        });
       }
     });
 
