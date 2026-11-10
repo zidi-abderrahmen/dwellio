@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,8 @@ import 'core/supabase_config.dart';
 import 'core/theme.dart';
 import 'providers/auth_providers.dart';
 import 'widgets/property_card.dart';
+import 'models/property_models.dart' as property_models;
+import 'services/property_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,7 +30,7 @@ class ImmobilierApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
-    
+
     return MaterialApp.router(
       title: 'Immobilier',
       debugShowCheckedModeBanner: false,
@@ -76,66 +79,6 @@ class HomeProperty extends PropertyCardData {
 }
 
 // --------------------------------------------------
-// Mock Properties
-// Based on the Supabase properties table
-// --------------------------------------------------
-
-const List<HomeProperty> fakeProperties = [
-  HomeProperty(
-    id: '00000000-0000-4000-8000-000000000001',
-    title: 'Bright 3-room apartment',
-    listingType: ListingType.sale,
-    propertyType: PropertyType.apartment,
-    price: 250000.0,
-    surfaceM2: 120,
-    rooms: 3,
-    bathrooms: 2,
-    city: 'Tunis',
-    address: 'Les Berges du Lac, Tunis',
-    variant: PropertyCardVariant.featured,
-  ),
-  HomeProperty(
-    id: '00000000-0000-4000-8000-000000000002',
-    title: 'Modern family villa',
-    listingType: ListingType.sale,
-    propertyType: PropertyType.villa,
-    price: 650000.0,
-    surfaceM2: 250,
-    rooms: 5,
-    bathrooms: 3,
-    city: 'La Marsa',
-    address: 'La Marsa, Tunis',
-    variant: PropertyCardVariant.newListing,
-  ),
-  HomeProperty(
-    id: '00000000-0000-4000-8000-000000000003',
-    title: 'Cozy apartment for rent',
-    listingType: ListingType.rent,
-    propertyType: PropertyType.apartment,
-    price: 1200.0,
-    surfaceM2: 85,
-    rooms: 2,
-    bathrooms: 1,
-    city: 'Ariana',
-    address: 'Ennasr 2, Ariana',
-    variant: PropertyCardVariant.standard,
-  ),
-  HomeProperty(
-    id: '00000000-0000-4000-8000-000000000004',
-    title: 'Spacious traditional house',
-    listingType: ListingType.sale,
-    propertyType: PropertyType.house,
-    price: 320000.0,
-    surfaceM2: 180,
-    rooms: 4,
-    bathrooms: 2,
-    city: 'Bizerte',
-    address: 'Centre Ville, Bizerte',
-    variant: PropertyCardVariant.standard,
-  ),
-];
-
-// --------------------------------------------------
 // Home Screen
 // --------------------------------------------------
 
@@ -149,9 +92,108 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final Set<String> _favorites = <String>{};
 
+  List<property_models.PropertySearchResult> _properties = [];
+
+  bool _loading = true;
+
+  String? _loadError;
+
+  // -----------------------------------------------
+  // Lifecycle
+  // -----------------------------------------------
+
+  @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadProperties();
+      }
+    });
+  }
+
+  // -----------------------------------------------
+  // Load properties from Supabase
+  // -----------------------------------------------
+
+  Future<void> _loadProperties({bool isRefresh = false}) async {
+    if (!mounted) return;
+
+    setState(() {
+      if (!isRefresh) {
+        _loading = true;
+      }
+
+      _loadError = null;
+    });
+
+    try {
+      final result = await getProperties();
+
+      if (!mounted) return;
+
+      setState(() {
+        _properties = result;
+      });
+    } catch (error) {
+      debugPrint('Failed to load properties: $error');
+
+      if (!mounted) return;
+
+      setState(() {
+        _loadError =
+            'Unable to load properties. Please try again.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  // -----------------------------------------------
+  // Convert Supabase Property to PropertyCard data
+  // -----------------------------------------------
+
+  HomeProperty _toHomeProperty(
+    property_models.PropertySearchResult item,
+  ) {
+    return HomeProperty(
+      id: item.id,
+      title: item.title,
+
+      listingType: ListingType.values.byName(
+        item.listingType.name,
+      ),
+
+      propertyType: PropertyType.values.byName(
+        item.propertyType.name,
+      ),
+
+      price: item.price.toDouble(),
+      surfaceM2: item.surfaceM2?.toInt(),
+      rooms: item.rooms,
+      city: item.city,
+      address: item.address,
+      bathrooms: item.bathrooms,
+
+      variant: PropertyCardVariant.standard,
+    );
+  }
+
+  // -----------------------------------------------
+  // Toggle Favorite
+  // -----------------------------------------------
+
   void _toggleFavorite(String id) {
+    // Guests must sign in before they can favorite a property.
     if (ref.read(sessionProvider) == null) {
-      context.push(AppRoutes.loginLocation(from: AppRoutes.home));
+      context.push(
+        AppRoutes.loginLocation(from: AppRoutes.home),
+      );
       return;
     }
 
@@ -168,23 +210,118 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // Render Property
   // -----------------------------------------------
 
-  Widget _buildProperty(BuildContext context, int index) {
-    final item = fakeProperties[index];
+  Widget _buildProperty(
+    BuildContext context,
+    int index,
+  ) {
+    final item = _properties[index];
+
+    final cardProperty = _toHomeProperty(item);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Center(
         child: PropertyCard(
-          property: item,
-          variant: item.variant,
+          property: cardProperty,
+          variant: PropertyCardVariant.standard,
           currencyLabel: 'DT',
-          period: item.listingType == ListingType.rent ? '/ mois' : null,
+          period: item.listingType.name == 'rent'
+              ? '/ mois'
+              : null,
           favorite: _favorites.contains(item.id),
-          onFavoritePress: () => _toggleFavorite(item.id),
+          onFavoritePress: () {
+            _toggleFavorite(item.id);
+          },
           onPress: () {
-            debugPrint('Selected property: ${item.id}');
+            context.push(
+              AppRoutes.propertyDetailsLocation(item.id),
+            );
           },
         ),
+      ),
+    );
+  }
+
+  // -----------------------------------------------
+  // Empty / Loading / Error Content
+  // -----------------------------------------------
+
+  Widget _buildListEmptyContent() {
+    if (_loading) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(
+            color: AppColors.primary,
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Loading properties...',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: AppFontConfig.fontFamily,
+              fontSize: 14,
+              color: AppColors.secondary,
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_loadError != null) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _loadError!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontFamily: AppFontConfig.fontFamily,
+              fontSize: 14,
+              color: AppColors.error,
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          SizedBox(
+            height: 44,
+            child: ElevatedButton(
+              onPressed: () {
+                _loadProperties();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: AppColors.onPrimary,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Try again',
+                style: TextStyle(
+                  fontFamily: AppFontConfig.fontFamily,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.onPrimary,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return const Text(
+      'No active properties found.',
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontFamily: AppFontConfig.fontFamily,
+        fontSize: 14,
+        color: AppColors.secondary,
       ),
     );
   }
@@ -195,6 +332,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Clear local favorites after logout.
     ref.listen(sessionProvider, (previous, next) {
       if (next == null && _favorites.isNotEmpty) {
         setState(_favorites.clear);
@@ -208,23 +346,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         body: SafeArea(
           child: Column(
             children: [
+              // --------------------------------
               // Header
+              // --------------------------------
 
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                padding: const EdgeInsets.fromLTRB(
+                  16,
+                  16,
+                  16,
+                  24,
+                ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
                         children: [
                           const Padding(
                             padding: EdgeInsets.only(bottom: 4),
                             child: Text(
                               'Find your next home',
                               style: TextStyle(
-                                fontFamily: AppFontConfig.fontFamily,
+                                fontFamily:
+                                    AppFontConfig.fontFamily,
                                 fontSize: 14,
                                 fontWeight: FontWeight.w400,
                                 height: 20 / 14,
@@ -237,11 +384,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             style: Theme.of(context)
                                 .textTheme
                                 .headlineMedium
-                                ?.copyWith(color: AppColors.primary),
+                                ?.copyWith(
+                                  color: AppColors.primary,
+                                ),
                           ),
                         ],
                       ),
                     ),
+
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
@@ -252,7 +402,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
-                        '${fakeProperties.length} biens',
+                        _loading
+                            ? '...'
+                            : '${_properties.length} biens',
                         style: const TextStyle(
                           fontFamily: AppFontConfig.fontFamily,
                           fontSize: 13,
@@ -265,15 +417,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
 
+              // --------------------------------
               // Section Header
+              // --------------------------------
 
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                ),
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 16),
                   width: double.infinity,
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
                     children: [
                       const Padding(
                         padding: EdgeInsets.only(bottom: 4),
@@ -288,6 +445,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ),
                         ),
                       ),
+
                       const Text(
                         'Découvrez nos dernières annonces',
                         style: TextStyle(
@@ -304,14 +462,58 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
 
-              // Properties List
+              // --------------------------------
+              // Supabase Properties List
+              // --------------------------------
 
               Expanded(
-                child: ListView.builder(
-                  itemCount: fakeProperties.length,
-                  itemBuilder: _buildProperty,
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-                  physics: const BouncingScrollPhysics(),
+                child: RefreshIndicator(
+                  onRefresh: () {
+                    return _loadProperties(isRefresh: true);
+                  },
+                  color: AppColors.primary,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return ListView.builder(
+                        itemCount: _properties.isEmpty
+                            ? 1
+                            : _properties.length,
+
+                        padding: const EdgeInsets.fromLTRB(
+                          16,
+                          0,
+                          16,
+                          32,
+                        ),
+
+                        physics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
+
+                        itemBuilder: (context, index) {
+                          // Empty / Loading / Error content
+                          if (_properties.isEmpty) {
+                            return SizedBox(
+                              height: constraints.maxHeight,
+                              child: Center(
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 32,
+                                  ),
+                                  child: _buildListEmptyContent(),
+                                ),
+                              ),
+                            );
+                          }
+
+                          // Property Card
+                          return _buildProperty(context, index);
+                        },
+                      );
+                    },
+                  ),
                 ),
               ),
             ],
