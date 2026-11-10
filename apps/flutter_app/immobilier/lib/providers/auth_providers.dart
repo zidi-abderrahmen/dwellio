@@ -7,13 +7,11 @@ final authServiceProvider = Provider<AuthService>(
   (ref) => AuthService(Supabase.instance.client),
 );
 
-/// Session listener: yemchi m3a onAuthStateChange
 final authStateProvider = StreamProvider<AuthState>(
   (ref) => ref.watch(authServiceProvider).authChanges,
 );
 
-/// Source unique lel session (null = ma7ach connecté)
 final sessionProvider = Provider<Session?>((ref) {
-  ref.watch(authStateProvider); // y3awed y7seb ki el auth state ybaddel
+  ref.watch(authStateProvider);
   return ref.watch(authServiceProvider).currentSession;
 });
