@@ -10,6 +10,7 @@ import 'core/router.dart';
 import 'core/supabase_config.dart';
 import 'core/theme.dart';
 import 'providers/auth_providers.dart';
+import 'providers/property_providers.dart';
 import 'screens/property/property_filter_sheet.dart';
 import 'widgets/property_card.dart';
 import 'models/property_models.dart' as property_models;
@@ -417,6 +418,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(homePropertyRefreshProvider, (previous, next) {
+      if (previous != next) _loadProperties();
+    });
+
     // Clear local favorites after logout.
     ref.listen(sessionProvider, (previous, next) {
       if (next == null && _favorites.isNotEmpty) {
