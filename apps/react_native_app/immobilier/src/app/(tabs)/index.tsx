@@ -14,7 +14,7 @@ import {
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { usePathname, useRouter } from 'expo-router';
+import { useFocusEffect, usePathname, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import PropertyCard from '../../components/PropertyCard';
@@ -44,6 +44,8 @@ export default function HomeScreen() {
   const isMounted = useRef(false);
   const requestId = useRef(0);
   const searchTextRef = useRef('');
+  const filtersRef = useRef<PropertyFilters>({});
+  filtersRef.current = filters;
   const skipNextSearchDebounce = useRef(false);
   const skipInitialSearchDebounce = useRef(true);
   const skipInitialFilterLoad = useRef(true);
@@ -90,15 +92,21 @@ export default function HomeScreen() {
     [],
   );
 
-  useEffect(() => {
-    isMounted.current = true;
-    void loadProperties();
+  useFocusEffect(
+    useCallback(() => {
+      isMounted.current = true;
 
-    return () => {
-      isMounted.current = false;
-      requestId.current += 1;
-    };
-  }, [loadProperties]);
+      void loadProperties({
+        ...filtersRef.current,
+        city: searchTextRef.current.trim() || undefined,
+      });
+
+      return () => {
+        isMounted.current = false;
+        requestId.current += 1;
+      };
+    }, [loadProperties]),
+  );
 
   useEffect(() => {
     if (skipNextSearchDebounce.current) {
