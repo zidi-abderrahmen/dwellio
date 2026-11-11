@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   ActivityIndicator,
@@ -7,6 +7,7 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type ListRenderItemInfo,
 } from 'react-native';
@@ -14,12 +15,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useFocusEffect, usePathname, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 import PropertyCard from '../../components/PropertyCard';
+import PropertyFilterSheet from '../../components/property/PropertyFilterSheet';
 import { theme, spacing, radius, typography } from '../../theme';
 import { getCurrentUser } from '../../services/authService';
-import { getProperties } from '../../services/propertyService';
+import { getFilteredProperties } from '../../services/propertyService';
 import type { PropertySearchResult } from '../../types/property';
+import type { PropertyFilters } from '../../types/propertyFilters';
 
 const colors = theme.colors;
 
@@ -30,12 +34,21 @@ const colors = theme.colors;
 export default function HomeScreen() {
   const [properties, setProperties] = useState<PropertySearchResult[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [searchText, setSearchText] = useState('');
+  const [filters, setFilters] = useState<PropertyFilters>({});
+  const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const isMounted = useRef(false);
   const requestId = useRef(0);
+  const searchTextRef = useRef('');
+  const filtersRef = useRef<PropertyFilters>({});
+  filtersRef.current = filters;
+  const skipNextSearchDebounce = useRef(false);
+  const skipInitialSearchDebounce = useRef(true);
+  const skipInitialFilterLoad = useRef(true);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -43,43 +56,50 @@ export default function HomeScreen() {
   // Load properties from Supabase
   // -----------------------------------------------
 
-  const loadProperties = useCallback(async (isRefresh = false) => {
-    const currentRequestId = ++requestId.current;
+  const loadProperties = useCallback(
+    async (activeFilters: PropertyFilters = {}, isRefresh = false) => {
+      const currentRequestId = ++requestId.current;
 
-    if (isRefresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-
-    setLoadError(null);
-
-    try {
-      const result = await getProperties();
-
-      if (isMounted.current && requestId.current === currentRequestId) {
-        setProperties(result);
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
       }
-    } catch (error) {
-      if (requestId.current === currentRequestId) {
-        console.error('Failed to load properties:', error);
 
-        if (isMounted.current) {
-          setLoadError('Unable to load properties. Please try again.');
+      setLoadError(null);
+
+      try {
+        const result = await getFilteredProperties(activeFilters);
+
+        if (isMounted.current && requestId.current === currentRequestId) {
+          setProperties(result);
+        }
+      } catch (error) {
+        if (requestId.current === currentRequestId) {
+          console.error('Failed to load properties:', error);
+
+          if (isMounted.current) {
+            setLoadError('Unable to load properties. Please try again.');
+          }
+        }
+      } finally {
+        if (isMounted.current && requestId.current === currentRequestId) {
+          setLoading(false);
+          setRefreshing(false);
         }
       }
-    } finally {
-      if (isMounted.current && requestId.current === currentRequestId) {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    }
-  }, []);
+    },
+    [],
+  );
 
   useFocusEffect(
     useCallback(() => {
       isMounted.current = true;
-      void loadProperties();
+
+      void loadProperties({
+        ...filtersRef.current,
+        city: searchTextRef.current.trim() || undefined,
+      });
 
       return () => {
         isMounted.current = false;
@@ -87,6 +107,70 @@ export default function HomeScreen() {
       };
     }, [loadProperties]),
   );
+
+  useEffect(() => {
+    if (skipNextSearchDebounce.current) {
+      skipNextSearchDebounce.current = false;
+      return;
+    }
+
+    if (skipInitialSearchDebounce.current) {
+      skipInitialSearchDebounce.current = false;
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      const city = searchText.trim() || undefined;
+      setFilters((currentFilters) => ({ ...currentFilters, city }));
+    }, 400);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchText]);
+
+  useEffect(() => {
+    if (skipInitialFilterLoad.current) {
+      skipInitialFilterLoad.current = false;
+      return;
+    }
+
+    if (filters.city !== (searchTextRef.current.trim() || undefined)) {
+      return;
+    }
+
+    void loadProperties(filters);
+  }, [filters, loadProperties]);
+
+  const handleSearchChange = useCallback((text: string) => {
+    searchTextRef.current = text;
+    setSearchText(text);
+    requestId.current += 1;
+  }, []);
+
+  const handleApplyFilters = useCallback((selectedFilters: PropertyFilters) => {
+    const city = selectedFilters.city?.trim() || undefined;
+    const nextSearchText = city ?? '';
+
+    if (searchTextRef.current !== nextSearchText) {
+      skipNextSearchDebounce.current = true;
+      searchTextRef.current = nextSearchText;
+      setSearchText(nextSearchText);
+    }
+
+    requestId.current += 1;
+    setFilters({ ...selectedFilters, city });
+    setFilterSheetVisible(false);
+  }, []);
+
+  const handleResetFilters = useCallback(() => {
+    if (searchTextRef.current !== '') {
+      skipNextSearchDebounce.current = true;
+      searchTextRef.current = '';
+      setSearchText('');
+    }
+
+    requestId.current += 1;
+    setFilters({});
+  }, []);
 
   // -----------------------------------------------
   // Toggle Favorite
@@ -173,7 +257,10 @@ export default function HomeScreen() {
       <Pressable
         accessibilityRole="button"
         onPress={() => {
-          void loadProperties();
+          void loadProperties({
+            ...filters,
+            city: searchText.trim() || undefined,
+          });
         }}
         style={styles.retryButton}
       >
@@ -182,9 +269,47 @@ export default function HomeScreen() {
     </View>
   ) : (
     <View style={styles.listStateContainer}>
-      <Text style={styles.listStateText}>No active properties found.</Text>
+      <Text style={styles.listStateText}>
+        No properties match your search or filters.
+      </Text>
     </View>
   );
+
+  const activeFilterCount = [
+    filters.city,
+    filters.minPrice,
+    filters.maxPrice,
+    filters.propertyType,
+    filters.listingType,
+  ].filter((value) => value !== undefined && value !== '').length;
+
+  const listHeaderContent =
+    properties.length > 0 && (loading || loadError) ? (
+      <View style={styles.listFeedback}>
+        {loading ? (
+          <>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.listStateText}>Updating properties...</Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.errorText}>{loadError}</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                void loadProperties({
+                  ...filters,
+                  city: searchText.trim() || undefined,
+                });
+              }}
+              style={styles.retryButton}
+            >
+              <Text style={styles.retryButtonText}>Try again</Text>
+            </Pressable>
+          </>
+        )}
+      </View>
+    ) : undefined;
 
   // -----------------------------------------------
   // Screen
@@ -208,6 +333,33 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      <View style={styles.searchContainer}>
+        <Ionicons name="search-outline" size={20} color={colors.secondary} />
+        <TextInput
+          accessibilityLabel="Search properties by city"
+          placeholder="Search by city"
+          placeholderTextColor={colors.secondary}
+          returnKeyType="search"
+          underlineColorAndroid="transparent"
+          value={searchText}
+          onChangeText={handleSearchChange}
+          style={styles.searchInput}
+        />
+        <Pressable
+          accessibilityLabel="Open property filters"
+          accessibilityRole="button"
+          onPress={() => setFilterSheetVisible(true)}
+          style={styles.filterButton}
+        >
+          <Ionicons name="options-outline" size={22} color={colors.primary} />
+          {activeFilterCount > 0 && (
+            <View style={styles.filterCountBadge}>
+              <Text style={styles.filterCountText}>{activeFilterCount}</Text>
+            </View>
+          )}
+        </Pressable>
+      </View>
+
       {/* Section Header */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Nos propriétés</Text>
@@ -227,12 +379,16 @@ export default function HomeScreen() {
           styles.listContent,
           properties.length === 0 && styles.emptyListContent,
         ]}
+        ListHeaderComponent={listHeaderContent}
         ListEmptyComponent={listEmptyContent}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => {
-              void loadProperties(true);
+              void loadProperties(
+                { ...filters, city: searchText.trim() || undefined },
+                true,
+              );
             }}
             tintColor={colors.primary}
             colors={[colors.primary]}
@@ -240,6 +396,13 @@ export default function HomeScreen() {
         }
         initialNumToRender={4}
         windowSize={5}
+      />
+      <PropertyFilterSheet
+        visible={filterSheetVisible}
+        filters={{ ...filters, city: searchText.trim() || undefined }}
+        onClose={() => setFilterSheetVisible(false)}
+        onApply={handleApplyFilters}
+        onReset={handleResetFilters}
       />
     </SafeAreaView>
   );
@@ -287,6 +450,52 @@ const styles = StyleSheet.create({
     color: colors.secondary,
   },
 
+  searchContainer: {
+    minHeight: 48,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.xl,
+    paddingHorizontal: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.outline,
+    borderRadius: radius.md,
+  },
+  searchInput: {
+    flex: 1,
+    minHeight: 46,
+    ...typography.body,
+    color: colors.onBackground,
+  },
+  filterButton: {
+    position: 'relative',
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.sm,
+  },
+  filterCountBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    minWidth: 17,
+    height: 17,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+  },
+  filterCountText: {
+    ...theme.fonts.labelSmall,
+    color: colors.onPrimary,
+    fontSize: 10,
+    lineHeight: 14,
+  },
+
   // Section Header
   sectionHeader: {
     paddingHorizontal: spacing.lg,
@@ -323,6 +532,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xxl,
     gap: spacing.md,
+  },
+  listFeedback: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
   },
   listStateText: {
     ...typography.body,
