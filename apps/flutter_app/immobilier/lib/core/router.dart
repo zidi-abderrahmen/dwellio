@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../screens/property/add_property_screen.dart';
 import '../screens/property/property_details_screen.dart';
 import '../main.dart' show HomeScreen;
 import '../providers/auth_providers.dart';
@@ -40,9 +42,6 @@ abstract final class AppRoutes {
   static String propertyDetailsLocation(String id) =>
       '/property/${Uri.encodeComponent(id)}';
 }
-
-
-
 
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier<int>(0);
@@ -85,48 +84,55 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final propertyId = state.pathParameters['id']!;
 
-          return PropertyDetailsScreen(
-            propertyId: propertyId,
-          );
+          return PropertyDetailsScreen(propertyId: propertyId);
         },
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             MainShell(navigationShell: navigationShell),
         branches: [
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: AppRoutes.home,
-              builder: (context, state) => const HomeScreen(),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: AppRoutes.favorites,
-              builder: (context, state) =>
-                  const PlaceholderScreen(title: 'Favorites'),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: AppRoutes.add,
-              builder: (context, state) =>
-                  const PlaceholderScreen(title: 'Add'),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: AppRoutes.chats,
-              builder: (context, state) =>
-                  const PlaceholderScreen(title: 'Chats'),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: AppRoutes.profile,
-              builder: (context, state) => const ProfileScreen(),
-            ),
-          ]),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.home,
+                builder: (context, state) => const HomeScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.favorites,
+                builder: (context, state) =>
+                    const PlaceholderScreen(title: 'Favorites'),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.add,
+                builder: (context, state) => const AddPropertyScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.chats,
+                builder: (context, state) =>
+                    const PlaceholderScreen(title: 'Chats'),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.profile,
+                builder: (context, state) => const ProfileScreen(),
+              ),
+            ],
+          ),
         ],
       ),
     ],
