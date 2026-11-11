@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +10,7 @@ import 'core/router.dart';
 import 'core/supabase_config.dart';
 import 'core/theme.dart';
 import 'providers/auth_providers.dart';
+import 'screens/property/property_filter_sheet.dart';
 import 'widgets/property_card.dart';
 import 'models/property_models.dart' as property_models;
 import 'services/property_service.dart';
@@ -24,11 +27,7 @@ Future<void> main() async {
     anonKey: SupabaseConfig.anonKey,
   );
 
-  runApp(
-    const ProviderScope(
-      child: ImmobilierApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: ImmobilierApp()));
 }
 
 // --------------------------------------------------
@@ -104,8 +103,15 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final Set<String> _favorites = <String>{};
+  final TextEditingController _citySearchController = TextEditingController();
+  final PropertyService _propertyService = PropertyService();
 
   List<property_models.PropertySearchResult> _properties = [];
+
+  property_models.PropertyFilters _filters =
+      const property_models.PropertyFilters();
+  Timer? _searchDebounce;
+  int _latestRequestId = 0;
 
   bool _loading = true;
 
@@ -126,27 +132,90 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _citySearchController.dispose();
+    super.dispose();
+  }
+
+  void _onCitySearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _latestRequestId++;
+
+    final city = value.trim();
+    final filters = _filters.copyWithCity(city.isEmpty ? null : city);
+    setState(() {
+      _filters = filters;
+    });
+
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+
+      _citySearchController.value = TextEditingValue(
+        text: city,
+        selection: TextSelection.collapsed(offset: city.length),
+      );
+      _loadProperties(filters: filters);
+    });
+  }
+
+  Future<void> _openFilters() async {
+    final initialFilters = _filters;
+    final filters = await showModalBottomSheet<property_models.PropertyFilters>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppColors.background,
+      builder: (context) => PropertyFilterSheet(initialFilters: initialFilters),
+    );
+
+    if (!mounted || filters == null) return;
+
+    _searchDebounce?.cancel();
+    final city = filters.city?.trim();
+    _citySearchController.value = TextEditingValue(
+      text: city ?? '',
+      selection: TextSelection.collapsed(offset: city?.length ?? 0),
+    );
+    setState(() {
+      _filters = filters;
+    });
+    _loadProperties(filters: filters);
+  }
+
+  void _resetFilters() {
+    _searchDebounce?.cancel();
+    _citySearchController.clear();
+    const filters = property_models.PropertyFilters();
+    setState(() {
+      _filters = filters;
+    });
+    _loadProperties(filters: filters);
+  }
+
   // -----------------------------------------------
   // Load properties from Supabase
   // -----------------------------------------------
 
   Future<void> _loadProperties({
-    bool isRefresh = false,
+    property_models.PropertyFilters? filters,
   }) async {
     if (!mounted) return;
 
-    setState(() {
-      if (!isRefresh) {
-        _loading = true;
-      }
+    final requestId = ++_latestRequestId;
 
+    setState(() {
+      _loading = true;
       _loadError = null;
     });
 
     try {
-      final result = await getProperties();
+      final result = await _propertyService.getFilteredProperties(
+        filters ?? _filters,
+      );
 
-      if (!mounted) return;
+      if (!mounted || requestId != _latestRequestId) return;
 
       setState(() {
         _properties = result;
@@ -154,14 +223,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     } catch (error) {
       debugPrint('Failed to load properties: $error');
 
-      if (!mounted) return;
+      if (!mounted || requestId != _latestRequestId) return;
 
       setState(() {
-        _loadError =
-            'Unable to load properties. Please try again.';
+        _loadError = 'Unable to load properties. Please try again.';
       });
     } finally {
-      if (mounted) {
+      if (mounted && requestId == _latestRequestId) {
         setState(() {
           _loading = false;
         });
@@ -173,20 +241,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // Convert Supabase Property to PropertyCard data
   // -----------------------------------------------
 
-  HomeProperty _toHomeProperty(
-    property_models.PropertySearchResult item,
-  ) {
+  HomeProperty _toHomeProperty(property_models.PropertySearchResult item) {
     return HomeProperty(
       id: item.id,
       title: item.title,
 
-      listingType: ListingType.values.byName(
-        item.listingType,
-      ),
+      listingType: ListingType.values.byName(item.listingType),
 
-      propertyType: PropertyType.values.byName(
-        item.propertyType,
-      ),
+      propertyType: PropertyType.values.byName(item.propertyType),
 
       price: item.price.toDouble(),
       surfaceM2: item.surfaceM2?.toInt(),
@@ -198,8 +260,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       variant: PropertyCardVariant.standard,
 
       imageUrl: item.propertyImages.isNotEmpty
-        ? item.propertyImages.first.imageUrl
-        : null,
+          ? item.propertyImages.first.imageUrl
+          : null,
     );
   }
 
@@ -210,9 +272,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _toggleFavorite(String id) {
     // Guests must sign in before they can favorite a property.
     if (ref.read(sessionProvider) == null) {
-      context.push(
-        AppRoutes.loginLocation(from: AppRoutes.home),
-      );
+      context.push(AppRoutes.loginLocation(from: AppRoutes.home));
       return;
     }
 
@@ -229,10 +289,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // Render Property
   // -----------------------------------------------
 
-  Widget _buildProperty(
-    BuildContext context,
-    int index,
-  ) {
+  Widget _buildProperty(BuildContext context, int index) {
     final item = _properties[index];
 
     final cardProperty = _toHomeProperty(item);
@@ -242,22 +299,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: Center(
         child: PropertyCard(
           image: cardProperty.imageUrl != null
-            ? NetworkImage(cardProperty.imageUrl!)
-            : null,
+              ? NetworkImage(cardProperty.imageUrl!)
+              : null,
           property: cardProperty,
           variant: PropertyCardVariant.standard,
           currencyLabel: 'DT',
-          period: item.listingType == 'rent'
-              ? '/ mois'
-              : null,
+          period: item.listingType == 'rent' ? '/ mois' : null,
           favorite: _favorites.contains(item.id),
           onFavoritePress: () {
             _toggleFavorite(item.id);
           },
           onPress: () {
-            context.push(
-              AppRoutes.propertyDetailsLocation(item.id),
-            );
+            context.push(AppRoutes.propertyDetailsLocation(item.id));
           },
         ),
       ),
@@ -273,9 +326,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const CircularProgressIndicator(
-            color: AppColors.primary,
-          ),
+          const CircularProgressIndicator(color: AppColors.primary),
           const SizedBox(height: 12),
           const Text(
             'Loading properties...',
@@ -315,9 +366,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: AppColors.onPrimary,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -337,14 +386,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
 
-    return const Text(
-      'No active properties found.',
-      textAlign: TextAlign.center,
-      style: TextStyle(
-        fontFamily: AppFontConfig.fontFamily,
-        fontSize: 14,
-        color: AppColors.secondary,
-      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          _filters.hasActiveFilters
+              ? 'No properties match your search or filters.'
+              : 'No active properties found.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontFamily: AppFontConfig.fontFamily,
+            fontSize: 14,
+            color: AppColors.secondary,
+          ),
+        ),
+        if (_filters.hasActiveFilters) ...[
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: _resetFilters,
+            child: const Text('Reset filters'),
+          ),
+        ],
+      ],
     );
   }
 
@@ -375,27 +438,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               // --------------------------------
 
               Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  16,
-                  16,
-                  16,
-                  24,
-                ),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Padding(
                             padding: EdgeInsets.only(bottom: 4),
                             child: Text(
                               'Find your next home',
                               style: TextStyle(
-                                fontFamily:
-                                    AppFontConfig.fontFamily,
+                                fontFamily: AppFontConfig.fontFamily,
                                 fontSize: 14,
                                 fontWeight: FontWeight.w400,
                                 height: 20 / 14,
@@ -405,12 +461,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ),
                           Text(
                             'Immobilier',
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineMedium
-                                ?.copyWith(
-                                  color: AppColors.primary,
-                                ),
+                            style: Theme.of(context).textTheme.headlineMedium
+                                ?.copyWith(color: AppColors.primary),
                           ),
                         ],
                       ),
@@ -426,9 +478,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
-                        _loading
-                            ? '...'
-                            : '${_properties.length} biens',
+                        _loading ? '...' : '${_properties.length} biens',
                         style: const TextStyle(
                           fontFamily: AppFontConfig.fontFamily,
                           fontSize: 13,
@@ -441,20 +491,75 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
 
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _citySearchController,
+                        onChanged: _onCitySearchChanged,
+                        textInputAction: TextInputAction.search,
+                        decoration: InputDecoration(
+                          hintText: 'Search by city',
+                          prefixIcon: const Icon(Icons.search),
+                          filled: true,
+                          fillColor: AppColors.surface,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 14,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: AppColors.outline,
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: AppColors.outline,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: _openFilters,
+                      icon: const Icon(Icons.filter_list),
+                      label: const Text('Filters'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        side: const BorderSide(color: AppColors.primary),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
               // --------------------------------
               // Section Header
               // --------------------------------
-
               Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 16),
                   width: double.infinity,
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Padding(
                         padding: EdgeInsets.only(bottom: 4),
@@ -489,26 +594,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               // --------------------------------
               // Supabase Properties List
               // --------------------------------
-
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: () {
-                    return _loadProperties(isRefresh: true);
+                    return _loadProperties();
                   },
                   color: AppColors.primary,
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       return ListView.builder(
-                        itemCount: _properties.isEmpty
+                        itemCount:
+                            _loading ||
+                                _loadError != null ||
+                                _properties.isEmpty
                             ? 1
                             : _properties.length,
 
-                        padding: const EdgeInsets.fromLTRB(
-                          16,
-                          0,
-                          16,
-                          32,
-                        ),
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
 
                         physics: const BouncingScrollPhysics(
                           parent: AlwaysScrollableScrollPhysics(),
@@ -516,13 +618,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
                         itemBuilder: (context, index) {
                           // Empty / Loading / Error content
-                          if (_properties.isEmpty) {
+                          if (_loading ||
+                              _loadError != null ||
+                              _properties.isEmpty) {
                             return SizedBox(
                               height: constraints.maxHeight,
                               child: Center(
                                 child: Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(
+                                  padding: const EdgeInsets.symmetric(
                                     horizontal: 16,
                                     vertical: 32,
                                   ),
