@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 
 import {
   ActivityIndicator,
@@ -13,7 +13,7 @@ import {
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { usePathname, useRouter } from 'expo-router';
+import { useFocusEffect, usePathname, useRouter } from 'expo-router';
 
 import PropertyCard from '../../components/PropertyCard';
 import { theme, spacing, radius, typography } from '../../theme';
@@ -35,6 +35,7 @@ export default function HomeScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const isMounted = useRef(false);
+  const requestId = useRef(0);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -43,6 +44,8 @@ export default function HomeScreen() {
   // -----------------------------------------------
 
   const loadProperties = useCallback(async (isRefresh = false) => {
+    const currentRequestId = ++requestId.current;
+
     if (isRefresh) {
       setRefreshing(true);
     } else {
@@ -54,31 +57,36 @@ export default function HomeScreen() {
     try {
       const result = await getProperties();
 
-      if (isMounted.current) {
+      if (isMounted.current && requestId.current === currentRequestId) {
         setProperties(result);
       }
     } catch (error) {
-      console.error('Failed to load properties:', error);
+      if (requestId.current === currentRequestId) {
+        console.error('Failed to load properties:', error);
 
-      if (isMounted.current) {
-        setLoadError('Unable to load properties. Please try again.');
+        if (isMounted.current) {
+          setLoadError('Unable to load properties. Please try again.');
+        }
       }
     } finally {
-      if (isMounted.current) {
+      if (isMounted.current && requestId.current === currentRequestId) {
         setLoading(false);
         setRefreshing(false);
       }
     }
   }, []);
 
-  useEffect(() => {
-    isMounted.current = true;
-    void loadProperties();
+  useFocusEffect(
+    useCallback(() => {
+      isMounted.current = true;
+      void loadProperties();
 
-    return () => {
-      isMounted.current = false;
-    };
-  }, [loadProperties]);
+      return () => {
+        isMounted.current = false;
+        requestId.current += 1;
+      };
+    }, [loadProperties]),
+  );
 
   // -----------------------------------------------
   // Toggle Favorite
