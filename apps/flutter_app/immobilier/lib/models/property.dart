@@ -25,6 +25,39 @@ enum PropertyStatus {
   String get value => name;
 }
 
+class PropertyFilters {
+  const PropertyFilters({
+    this.city,
+    this.minPrice,
+    this.maxPrice,
+    this.propertyType,
+    this.listingType,
+  });
+
+  final String? city;
+  final double? minPrice;
+  final double? maxPrice;
+  final PropertyType? propertyType;
+  final ListingType? listingType;
+
+  bool get hasActiveFilters =>
+      city?.trim().isNotEmpty == true ||
+      minPrice != null ||
+      maxPrice != null ||
+      propertyType != null ||
+      listingType != null;
+
+  PropertyFilters copyWithCity(String? city) {
+    return PropertyFilters(
+      city: city,
+      minPrice: minPrice,
+      maxPrice: maxPrice,
+      propertyType: propertyType,
+      listingType: listingType,
+    );
+  }
+}
+
 /// --------------------------------------------------
 /// Helpers
 /// --------------------------------------------------
