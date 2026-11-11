@@ -4,6 +4,7 @@ import type {
   PropertySearchResult,
   PropertyWithRelations,
 } from '../types/property';
+import type { PropertyFilters } from '../types/propertyFilters';
 
 export type CreatePropertyInput = Pick<
   Property,
@@ -36,8 +37,19 @@ function sortPropertyImages<T extends { position: number }>(
  * Loads active properties for the home/explore list.
  * The list only needs the first image for each property card.
  */
-export async function getProperties(): Promise<PropertySearchResult[]> {
-  const { data, error } = await supabase
+export async function getProperties(
+  filters: PropertyFilters = {},
+): Promise<PropertySearchResult[]> {
+  return getFilteredProperties(filters);
+}
+
+/**
+ * Loads active properties for the home/explore list with optional filters.
+ */
+export async function getFilteredProperties(
+  filters: PropertyFilters = {},
+): Promise<PropertySearchResult[]> {
+  let query = supabase
     .from('properties')
     .select(`
       id,
@@ -68,8 +80,29 @@ export async function getProperties(): Promise<PropertySearchResult[]> {
       )
     `)
     .eq('status', 'active')
-    .order('created_at', { ascending: false })
-    .limit(30);
+    .order('created_at', { ascending: false });
+
+  if (filters.city?.trim()) {
+    query = query.ilike('city', `%${filters.city.trim()}%`);
+  }
+
+  if (filters.minPrice !== undefined) {
+    query = query.gte('price', filters.minPrice);
+  }
+
+  if (filters.maxPrice !== undefined) {
+    query = query.lte('price', filters.maxPrice);
+  }
+
+  if (filters.propertyType !== undefined) {
+    query = query.eq('property_type', filters.propertyType);
+  }
+
+  if (filters.listingType !== undefined) {
+    query = query.eq('listing_type', filters.listingType);
+  }
+
+  const { data, error } = await query.limit(30);
 
   if (error) {
     throw new Error(`Failed to load properties: ${error.message}`);
