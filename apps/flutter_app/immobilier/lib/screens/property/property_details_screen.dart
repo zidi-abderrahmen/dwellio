@@ -64,6 +64,8 @@ class PropertyDetailsScreen extends StatefulWidget {
 }
 
 class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
+  final PropertyService _propertyService = PropertyService();
+
   PropertyWithRelations? _property;
 
   bool _loading = true;
@@ -118,7 +120,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     });
 
     try {
-      final result = await getPropertyById(widget.propertyId);
+      final result = await _propertyService.getPropertyById(widget.propertyId);
 
       if (!mounted) return;
 
