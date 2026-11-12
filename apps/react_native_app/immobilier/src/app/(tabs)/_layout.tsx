@@ -12,7 +12,8 @@ type ProtectedTabPath =
   | '/favorites'
   | '/add'
   | '/chats'
-  | '/profile';
+  | '/profile'
+  | '/my-listings';
 
 export default function TabLayout() {
   const router = useRouter();
