@@ -20,12 +20,13 @@ import {
 
 const AUTH_ROUTES = ['/login', '/register'] as const;
 
-const TAB_ROUTES = [
+const AUTH_REDIRECT_ROUTES = [
   '/',
   '/favorites',
   '/add',
   '/chats',
   '/profile',
+  '/my-listings',
 ] as const;
 
 const PROTECTED_ROUTES = [
@@ -33,18 +34,19 @@ const PROTECTED_ROUTES = [
   '/add',
   '/chats',
   '/profile',
+  '/my-listings',
 ] as const;
 
 // --------------------------------------------------
 // Route Helpers
 // --------------------------------------------------
 
-function isTabRoute(
+function isAuthRedirectRoute(
   location: unknown,
-): location is (typeof TAB_ROUTES)[number] {
+): location is (typeof AUTH_REDIRECT_ROUTES)[number] {
   return (
     typeof location === 'string' &&
-    (TAB_ROUTES as readonly string[]).includes(location)
+    (AUTH_REDIRECT_ROUTES as readonly string[]).includes(location)
   );
 }
 
@@ -91,7 +93,7 @@ function RootNavigator() {
 
     // Authenticated user trying to access Login/Register.
     if (loggedIn && isAuthPage) {
-      const destination = isTabRoute(from) ? from : '/';
+      const destination = isAuthRedirectRoute(from) ? from : '/';
 
       router.replace(destination as Href);
     }
@@ -106,6 +108,7 @@ function RootNavigator() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="my-listings" />
     </Stack>
   );
 }
