@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/supabase_config.dart';
 import '../models/property_models.dart';
 
 class PropertyCreationFailure implements Exception {
@@ -103,6 +106,68 @@ class PropertyService {
         'The property could not be saved. Please try again.',
       );
     }
+  }
+
+  /// Uploads an image for an existing property, reusing its path on retries.
+  Future<void> uploadPropertyImage({
+    required String propertyId,
+    required String imageId,
+    required Uint8List bytes,
+    required String fileName,
+    required String? contentType,
+    required int position,
+  }) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw const PropertyCreationFailure(
+        'Please sign in again to upload property photos.',
+      );
+    }
+
+    final extension = fileName.contains('.')
+        ? fileName.split('.').last.toLowerCase()
+        : 'jpg';
+    final safeExtension = RegExp(r'^[a-z0-9]+$').hasMatch(extension)
+        ? extension
+        : 'jpg';
+    final storagePath = '${user.id}/$propertyId/$imageId.$safeExtension';
+
+    final existingImage = await _client
+        .from('property_images')
+        .select('id')
+        .eq('property_id', propertyId)
+        .eq('storage_path', storagePath)
+        .limit(1)
+        .maybeSingle();
+    if (existingImage != null) return;
+
+    final storage = _client.storage.from(SupabaseConfig.propertyImagesBucket);
+    await storage.uploadBinary(
+      storagePath,
+      bytes,
+      fileOptions: FileOptions(
+        contentType: contentType ?? _contentTypeFor(safeExtension),
+        upsert: true,
+      ),
+    );
+
+    await _client.from('property_images').insert({
+      'property_id': propertyId,
+      'image_url': storage.getPublicUrl(storagePath),
+      'storage_path': storagePath,
+      'position': position,
+    });
+  }
+
+  String _contentTypeFor(String extension) {
+    return switch (extension) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'gif' => 'image/gif',
+      'heic' => 'image/heic',
+      'heif' => 'image/heif',
+      _ => 'image/jpeg',
+    };
   }
 
   /// Retrieves active properties matching every provided filter.

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/router.dart';
 import '../../core/theme.dart';
@@ -9,6 +11,18 @@ import '../../models/property.dart';
 import '../../providers/property_providers.dart';
 import '../../services/property_service.dart';
 import '../../widgets/auth_form_widgets.dart';
+
+class _SelectedPropertyImage {
+  const _SelectedPropertyImage({
+    required this.id,
+    required this.file,
+    required this.bytes,
+  });
+
+  final String id;
+  final XFile file;
+  final Uint8List bytes;
+}
 
 class AddPropertyScreen extends ConsumerStatefulWidget {
   const AddPropertyScreen({super.key});
@@ -18,7 +32,9 @@ class AddPropertyScreen extends ConsumerStatefulWidget {
 }
 
 class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
-  final _formKey = GlobalKey<FormState>();
+  static const _maxPropertyImages = 5;
+
+  GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _priceController = TextEditingController();
   final _cityController = TextEditingController();
@@ -26,9 +42,14 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
   final _surfaceController = TextEditingController();
   final _roomsController = TextEditingController();
   final _propertyService = PropertyService();
+  final _imagePicker = ImagePicker();
+  final _uuid = const Uuid();
+  final List<_SelectedPropertyImage> _selectedImages = [];
 
   PropertyType? _propertyType;
   ListingType? _listingType;
+  Property? _createdProperty;
+  bool _pickingImages = false;
   bool _submitting = false;
 
   @override
@@ -108,66 +129,163 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _resetForm() {
+    _titleController.clear();
+    _priceController.clear();
+    _cityController.clear();
+    _descriptionController.clear();
+    _surfaceController.clear();
+    _roomsController.clear();
+
+    setState(() {
+      _formKey = GlobalKey<FormState>();
+      _propertyType = null;
+      _listingType = null;
+      _createdProperty = null;
+      _selectedImages.clear();
+      _submitting = false;
+    });
+  }
+
+  Future<void> _pickPropertyImages() async {
+    if (_pickingImages) return;
+    final remaining = _maxPropertyImages - _selectedImages.length;
+    if (remaining <= 0) return;
+
+    setState(() => _pickingImages = true);
+    try {
+      final files = await _imagePicker.pickMultiImage(
+        maxWidth: 2000,
+        maxHeight: 2000,
+        imageQuality: 85,
+      );
+      if (files.isEmpty || !mounted) return;
+
+      final selectedFiles = files.take(remaining).toList();
+      final images = await Future.wait(
+        selectedFiles.map(
+          (file) async => _SelectedPropertyImage(
+            id: _uuid.v4(),
+            file: file,
+            bytes: await file.readAsBytes(),
+          ),
+        ),
+      );
+      if (!mounted) return;
+
+      setState(() => _selectedImages.addAll(images));
+      if (files.length > remaining) {
+        _showMessage('You can select up to 5 photos per property.');
+      }
+    } on PlatformException {
+      _showMessage('Could not open your photo gallery.');
+    } catch (error) {
+      debugPrint('Failed to read selected property photos: $error');
+      _showMessage('Could not load the selected photos.');
+    } finally {
+      if (mounted) {
+        setState(() => _pickingImages = false);
+      }
+    }
+  }
+
   Future<void> _publishProperty() async {
     if (_submitting) return;
 
-    FocusScope.of(context).unfocus();
-    if (!_formKey.currentState!.validate()) return;
+    final existingProperty = _createdProperty;
+    if (existingProperty == null) {
+      FocusScope.of(context).unfocus();
+      if (!_formKey.currentState!.validate()) return;
 
-    final propertyType = _propertyType;
-    final listingType = _listingType;
-    if (propertyType == null || listingType == null) {
-      _showMessage('Select a property type and listing type.');
-      return;
-    }
-
-    final title = _titleController.text.trim();
-    final description = _descriptionController.text.trim();
-    final surfaceText = _surfaceController.text.trim();
-    final roomsText = _roomsController.text.trim();
-    final price = double.tryParse(_priceController.text.trim());
-    final surfaceM2 = surfaceText.isEmpty ? null : int.tryParse(surfaceText);
-    final rooms = roomsText.isEmpty ? null : int.tryParse(roomsText);
-    if (price == null ||
-        surfaceM2 == null && surfaceText.isNotEmpty ||
-        rooms == null && roomsText.isNotEmpty) {
-      _showMessage('Please correct the highlighted form fields.');
-      return;
-    }
-
-    setState(() => _submitting = true);
-    late final Property property;
-    try {
-      property = await _propertyService.createProperty(
-        title: title,
-        description: description.isEmpty ? null : description,
-        listingType: listingType,
-        propertyType: propertyType,
-        price: price,
-        surfaceM2: surfaceM2,
-        rooms: rooms,
-        city: _cityController.text.trim(),
-      );
-    } on PropertyCreationFailure catch (error) {
-      if (mounted) {
-        setState(() => _submitting = false);
-        _showMessage(error.message);
+      final propertyType = _propertyType;
+      final listingType = _listingType;
+      if (propertyType == null || listingType == null) {
+        _showMessage('Select a property type and listing type.');
+        return;
       }
-      return;
+
+      final title = _titleController.text.trim();
+      final description = _descriptionController.text.trim();
+      final surfaceText = _surfaceController.text.trim();
+      final roomsText = _roomsController.text.trim();
+      final price = double.tryParse(_priceController.text.trim());
+      final surfaceM2 = surfaceText.isEmpty ? null : int.tryParse(surfaceText);
+      final rooms = roomsText.isEmpty ? null : int.tryParse(roomsText);
+      if (price == null ||
+          surfaceM2 == null && surfaceText.isNotEmpty ||
+          rooms == null && roomsText.isNotEmpty) {
+        _showMessage('Please correct the highlighted form fields.');
+        return;
+      }
+
+      setState(() => _submitting = true);
+      try {
+        _createdProperty = await _propertyService.createProperty(
+          title: title,
+          description: description.isEmpty ? null : description,
+          listingType: listingType,
+          propertyType: propertyType,
+          price: price,
+          surfaceM2: surfaceM2,
+          rooms: rooms,
+          city: _cityController.text.trim(),
+        );
+      } on PropertyCreationFailure catch (error) {
+        if (mounted) {
+          setState(() => _submitting = false);
+          _showMessage(error.message);
+        }
+        return;
+      } catch (error) {
+        debugPrint('Failed to publish property: $error');
+        if (mounted) {
+          setState(() => _submitting = false);
+          _showMessage(
+            'Unable to publish property. Check your connection and try again.',
+          );
+        }
+        return;
+      }
+    }
+
+    final property = _createdProperty ?? existingProperty;
+    if (property == null || !mounted) return;
+    if (!_submitting) {
+      setState(() => _submitting = true);
+    }
+
+    try {
+      for (var index = 0; index < _selectedImages.length; index++) {
+        final image = _selectedImages[index];
+        await _propertyService.uploadPropertyImage(
+          propertyId: property.id,
+          imageId: image.id,
+          bytes: image.bytes,
+          fileName: image.file.name,
+          contentType: image.file.mimeType,
+          position: index,
+        );
+      }
     } catch (error) {
-      debugPrint('Failed to publish property: $error');
+      debugPrint('Failed to upload property photos: $error');
       if (mounted) {
         setState(() => _submitting = false);
         _showMessage(
-          'Unable to publish property. Check your connection and try again.',
+          'Property saved, but some photos could not be uploaded. '
+          'Tap Retry photo upload to try again.',
         );
       }
       return;
     }
 
     if (!mounted) return;
-    setState(() => _submitting = false);
-    _showMessage('Property published successfully.');
+    final uploadedPhotos = _selectedImages.isNotEmpty;
+    _resetForm();
+    _showMessage(
+      uploadedPhotos
+          ? 'Property and photos published successfully.'
+          : 'Property published successfully.',
+    );
 
     await context.push<void>(AppRoutes.propertyDetailsLocation(property.id));
 
@@ -223,6 +341,7 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
                     children: [
                       TextFormField(
                         controller: _titleController,
+                        readOnly: _createdProperty != null,
                         textCapitalization: TextCapitalization.sentences,
                         textInputAction: TextInputAction.next,
                         maxLength: 120,
@@ -269,7 +388,7 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
                             child: Text('Shop'),
                           ),
                         ],
-                        onChanged: _submitting
+                        onChanged: _submitting || _createdProperty != null
                             ? null
                             : (value) => setState(() => _propertyType = value),
                       ),
@@ -299,7 +418,8 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
                             selected: field.value == null
                                 ? const <ListingType>{}
                                 : {field.value!},
-                            onSelectionChanged: _submitting
+                            onSelectionChanged:
+                                _submitting || _createdProperty != null
                                 ? null
                                 : (selection) {
                                     final value = selection.isEmpty
@@ -315,6 +435,7 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _priceController,
+                        readOnly: _createdProperty != null,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
@@ -328,6 +449,7 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _cityController,
+                        readOnly: _createdProperty != null,
                         textCapitalization: TextCapitalization.words,
                         textInputAction: TextInputAction.next,
                         validator: _validateCity,
@@ -339,6 +461,7 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _descriptionController,
+                        readOnly: _createdProperty != null,
                         textCapitalization: TextCapitalization.sentences,
                         keyboardType: TextInputType.multiline,
                         minLines: 3,
@@ -351,6 +474,7 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _surfaceController,
+                        readOnly: _createdProperty != null,
                         keyboardType: TextInputType.number,
                         textInputAction: TextInputAction.next,
                         validator: _validateSurface,
@@ -362,6 +486,7 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _roomsController,
+                        readOnly: _createdProperty != null,
                         keyboardType: TextInputType.number,
                         textInputAction: TextInputAction.done,
                         validator: _validateRooms,
@@ -370,6 +495,83 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
                           Icons.meeting_room_outlined,
                         ),
                       ),
+                      const SizedBox(height: 24),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Photos (optional, up to 5)',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed:
+                            _submitting ||
+                                _pickingImages ||
+                                _createdProperty != null ||
+                                _selectedImages.length >= _maxPropertyImages
+                            ? null
+                            : _pickPropertyImages,
+                        icon: const Icon(Icons.add_photo_alternate_outlined),
+                        label: Text(
+                          'Select photos (${_selectedImages.length}/$_maxPropertyImages)',
+                        ),
+                      ),
+                      if (_selectedImages.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 88,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _selectedImages.length,
+                            separatorBuilder: (context, index) =>
+                                const SizedBox(width: 8),
+                            itemBuilder: (context, index) => Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.memory(
+                                    _selectedImages[index].bytes,
+                                    width: 88,
+                                    height: 88,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                                if (_createdProperty == null)
+                                  Positioned(
+                                    top: 2,
+                                    right: 2,
+                                    child: InkWell(
+                                      onTap: _submitting
+                                          ? null
+                                          : () => setState(
+                                              () => _selectedImages.removeAt(
+                                                index,
+                                              ),
+                                            ),
+                                      child: const CircleAvatar(
+                                        radius: 12,
+                                        backgroundColor: Colors.black54,
+                                        child: Icon(
+                                          Icons.close,
+                                          size: 15,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (_createdProperty != null) ...[
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Property details and photos are locked while '
+                          'photo uploads are retried.',
+                        ),
+                      ],
                       const SizedBox(height: 24),
                       SizedBox(
                         height: 52,
@@ -391,7 +593,11 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
                                     color: AppColors.onPrimary,
                                   ),
                                 )
-                              : const Text('Publish Property'),
+                              : Text(
+                                  _createdProperty == null
+                                      ? 'Publish Property'
+                                      : 'Retry photo upload',
+                                ),
                         ),
                       ),
                     ],
