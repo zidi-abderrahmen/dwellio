@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   ActivityIndicator,
@@ -15,13 +15,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 
 import { theme, spacing, radius, typography } from '../../theme';
 import {
   createProperty,
+  getMyPropertyById,
+  updateProperty,
   uploadPropertyImages,
 } from '../../services/propertyService';
 import type { ListingType, Property, PropertyType } from '../../types/property';
@@ -61,7 +64,8 @@ type FormField =
   | 'price'
   | 'city'
   | 'surface'
-  | 'rooms';
+  | 'rooms'
+  | 'bathrooms';
 
 type FormErrors = Partial<Record<FormField, string>>;
 
@@ -71,9 +75,11 @@ interface PropertyFormValues {
   listingType: ListingType | null;
   price: string;
   city: string;
+  address: string;
   description: string;
   surface: string;
   rooms: string;
+  bathrooms: string;
 }
 
 interface ValidatedPropertyForm {
@@ -84,10 +90,40 @@ interface ValidatedPropertyForm {
     listingType: ListingType;
     price: number;
     city: string;
+    address: string | null;
     description: string | null;
     surface: number | null;
     rooms: number | null;
+    bathrooms: number | null;
   } | null;
+}
+
+const EMPTY_FORM_VALUES: PropertyFormValues = {
+  title: '',
+  propertyType: null,
+  listingType: null,
+  price: '',
+  city: '',
+  address: '',
+  description: '',
+  surface: '',
+  rooms: '',
+  bathrooms: '',
+};
+
+function toPropertyFormValues(property: Property): PropertyFormValues {
+  return {
+    title: property.title,
+    propertyType: property.property_type,
+    listingType: property.listing_type,
+    price: property.price.toString(),
+    city: property.city,
+    address: property.address ?? '',
+    description: property.description ?? '',
+    surface: property.surface_m2?.toString() ?? '',
+    rooms: property.rooms?.toString() ?? '',
+    bathrooms: property.bathrooms?.toString() ?? '',
+  };
 }
 
 function parsePrice(value: string): number | undefined {
@@ -123,9 +159,11 @@ function validatePropertyForm(
 ): ValidatedPropertyForm {
   const title = values.title.trim();
   const city = values.city.trim();
+  const address = values.address.trim();
   const price = parsePrice(values.price);
   const surface = parseOptionalInteger(values.surface);
   const rooms = parseOptionalInteger(values.rooms);
+  const bathrooms = parseOptionalInteger(values.bathrooms);
   const errors: FormErrors = {};
 
   if (title.length < 3 || title.length > 120) {
@@ -149,6 +187,9 @@ function validatePropertyForm(
   if (rooms === undefined) {
     errors.rooms = 'Rooms must be a non-negative whole number.';
   }
+  if (bathrooms === undefined) {
+    errors.bathrooms = 'Bathrooms must be a non-negative whole number.';
+  }
 
   if (
     Object.keys(errors).length > 0 ||
@@ -167,33 +208,61 @@ function validatePropertyForm(
       listingType: values.listingType,
       price,
       city,
+      address: address || null,
       description: values.description.trim() || null,
       surface: surface ?? null,
       rooms: rooms ?? null,
+      bathrooms: bathrooms ?? null,
     },
   };
 }
 
 export default function AddScreen() {
+  const { propertyId: routePropertyId } = useLocalSearchParams<{
+    propertyId?: string | string[];
+  }>();
+  const invalidPropertyId = Array.isArray(routePropertyId);
+  const propertyId =
+    typeof routePropertyId === 'string' ? routePropertyId.trim() : undefined;
+
+  return (
+    <PropertyForm
+      key={invalidPropertyId ? 'invalid' : propertyId || 'new'}
+      propertyId={propertyId}
+      invalidPropertyId={invalidPropertyId}
+    />
+  );
+}
+
+function PropertyForm({
+  propertyId,
+  invalidPropertyId,
+}: {
+  propertyId: string | undefined;
+  invalidPropertyId: boolean;
+}) {
   const router = useRouter();
-  const [formValues, setFormValues] = useState<PropertyFormValues>({
-    title: '',
-    propertyType: null,
-    listingType: null,
-    price: '',
-    city: '',
-    description: '',
-    surface: '',
-    rooms: '',
-  });
+  const isEditing = propertyId !== undefined || invalidPropertyId;
+  const initialLoadError =
+    invalidPropertyId || (isEditing && !propertyId)
+      ? 'The property ID is invalid.'
+      : null;
+  const [formValues, setFormValues] =
+    useState<PropertyFormValues>(EMPTY_FORM_VALUES);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [propertyLoadError, setPropertyLoadError] = useState<string | null>(
+    initialLoadError,
+  );
   const [photoSelectionMessage, setPhotoSelectionMessage] = useState<
     string | null
   >(null);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [uploadSummary, setUploadSummary] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [loadingProperty, setLoadingProperty] = useState(
+    propertyId !== undefined && !initialLoadError,
+  );
   const [pickingImages, setPickingImages] = useState(false);
   const [pickedImages, setPickedImages] = useState<PickedPropertyImage[]>([]);
   const [savedProperty, setSavedProperty] = useState<Property | null>(null);
@@ -201,6 +270,39 @@ export default function AddScreen() {
   const imagePickerInProgress = useRef(false);
   const imageSequence = useRef(0);
   const savedPropertyRef = useRef<Property | null>(null);
+
+  useEffect(() => {
+    if (!propertyId || invalidPropertyId || initialLoadError) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void getMyPropertyById(propertyId)
+      .then((property) => {
+        if (!cancelled) {
+          setFormValues(toPropertyFormValues(property));
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setPropertyLoadError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to load this property for editing.',
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingProperty(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialLoadError, invalidPropertyId, propertyId]);
 
   const updateFormValue = <K extends keyof PropertyFormValues>(
     key: K,
@@ -231,18 +333,46 @@ export default function AddScreen() {
     setPhotoSelectionMessage(null);
 
     try {
+      const propertyInput = {
+        title: validation.payload.title,
+        description: validation.payload.description,
+        listing_type: validation.payload.listingType,
+        property_type: validation.payload.propertyType,
+        price: validation.payload.price,
+        surface_m2: validation.payload.surface,
+        rooms: validation.payload.rooms,
+        bathrooms: validation.payload.bathrooms,
+        city: validation.payload.city,
+        address: validation.payload.address,
+      };
+
+      if (propertyId) {
+        await updateProperty(propertyId, propertyInput);
+        Alert.alert(
+          'Property updated',
+          'Your listing has been updated successfully.',
+          [
+            {
+              text: 'View property',
+              onPress: () =>
+                router.replace({
+                  pathname: '/property/[id]',
+                  params: { id: propertyId },
+                }),
+            },
+            {
+              text: 'My Listings',
+              onPress: () => router.replace('/my-listings'),
+            },
+          ],
+          { cancelable: false },
+        );
+        return;
+      }
+
       let property = savedPropertyRef.current;
       if (property === null) {
-        property = await createProperty({
-          title: validation.payload.title,
-          description: validation.payload.description,
-          listing_type: validation.payload.listingType,
-          property_type: validation.payload.propertyType,
-          price: validation.payload.price,
-          surface_m2: validation.payload.surface,
-          rooms: validation.payload.rooms,
-          city: validation.payload.city,
-        });
+        property = await createProperty(propertyInput);
         savedPropertyRef.current = property;
         setSavedProperty(property);
       }
@@ -328,11 +458,20 @@ export default function AddScreen() {
         [
           {
             text: 'View property',
-            onPress: () =>
-              router.replace({
+            onPress: () => {
+              setFormValues(EMPTY_FORM_VALUES);
+              setErrors({});
+              setPickedImages([]);
+              setPhotoSelectionMessage(null);
+              setUploadProgress(null);
+              setUploadSummary(null);
+              setSavedProperty(null);
+              savedPropertyRef.current = null;
+              router.push({
                 pathname: '/property/[id]',
                 params: { id: property.id },
-              }),
+              });
+            },
           },
         ],
         { cancelable: false },
@@ -378,8 +517,6 @@ export default function AddScreen() {
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
         selectionLimit: MAX_PROPERTY_IMAGES,
-        quality: 0.6,
-        base64: true,
       });
 
       if (result.canceled) {
@@ -387,20 +524,32 @@ export default function AddScreen() {
       }
 
       const selectedAssets = result.assets.slice(0, remainingSlots);
-      const selectedImages = selectedAssets.map((asset) => {
-        if (!asset.base64) {
-          throw new Error('The selected photo could not be read.');
-        }
+      const selectedImages = await Promise.all(
+        selectedAssets.map(async (asset) => {
+          const key = `${Date.now()}-${imageSequence.current}`;
+          imageSequence.current += 1;
 
-        const key = `${Date.now()}-${imageSequence.current}`;
-        imageSequence.current += 1;
+          const renderedImage = await ImageManipulator.manipulate(asset.uri, {
+            maxWidth: 1920,
+            maxHeight: 1920,
+          }).renderAsync();
+          const normalizedImage = await renderedImage.saveAsync({
+            format: SaveFormat.JPEG,
+            compress: 0.6,
+            base64: true,
+          });
 
-        return {
-          key,
-          uri: asset.uri,
-          base64: asset.base64,
-        };
-      });
+          if (!normalizedImage.base64) {
+            throw new Error('The selected photo could not be read.');
+          }
+
+          return {
+            key,
+            uri: normalizedImage.uri,
+            base64: normalizedImage.base64,
+          };
+        }),
+      );
 
       setPickedImages((previous) =>
         [...previous, ...selectedImages].slice(0, MAX_PROPERTY_IMAGES),
@@ -441,7 +590,7 @@ export default function AddScreen() {
   };
 
   const formDisabled =
-    submitting || pickingImages || savedProperty !== null;
+    loadingProperty || submitting || pickingImages || savedProperty !== null;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -461,15 +610,36 @@ export default function AddScreen() {
           >
             <Ionicons name="arrow-back" size={22} color={colors.onSurface} />
           </Pressable>
-          <Text style={styles.headerTitle}>Add Property</Text>
+          <Text style={styles.headerTitle}>
+            {isEditing ? 'Edit Property' : 'Add Property'}
+          </Text>
           <View style={styles.headerSpacer} />
         </View>
 
-        <ScrollView
-          contentContainerStyle={styles.form}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+        {propertyLoadError !== null ? (
+          <View style={styles.loadState}>
+            <Text accessibilityRole="alert" style={styles.submitError}>
+              {propertyLoadError}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.replace('/my-listings')}
+              style={styles.submitButton}
+            >
+              <Text style={styles.submitButtonText}>Back to My Listings</Text>
+            </Pressable>
+          </View>
+        ) : loadingProperty ? (
+          <View style={styles.loadState}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.photoHint}>Loading property...</Text>
+          </View>
+        ) : (
+          <ScrollView
+            contentContainerStyle={styles.form}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
           <FormField label="Title" error={errors.title}>
             <TextInput
               accessibilityLabel="Property title"
@@ -530,6 +700,20 @@ export default function AddScreen() {
             />
           </FormField>
 
+          <FormField label="Address (optional)">
+            <TextInput
+              accessibilityLabel="Property address"
+              autoCapitalize="words"
+              editable={!formDisabled}
+              onChangeText={(value) => updateFormValue('address', value)}
+              placeholder="Street or neighborhood"
+              placeholderTextColor={colors.secondary}
+              returnKeyType="next"
+              style={styles.input}
+              value={formValues.address}
+            />
+          </FormField>
+
           <FormField label="Description">
             <TextInput
               accessibilityLabel="Property description"
@@ -575,7 +759,20 @@ export default function AddScreen() {
             </View>
           </View>
 
-          <View style={styles.field}>
+          <FormField error={errors.bathrooms} label="Bathrooms (optional)">
+            <TextInput
+              accessibilityLabel="Number of bathrooms"
+              editable={!formDisabled}
+              keyboardType="number-pad"
+              onChangeText={(value) => updateFormValue('bathrooms', value)}
+              placeholder="e.g. 2"
+              placeholderTextColor={colors.secondary}
+              style={styles.input}
+              value={formValues.bathrooms}
+            />
+          </FormField>
+
+          {!isEditing && <View style={styles.field}>
             <View style={styles.photoHeading}>
               <View style={styles.photoLabelGroup}>
                 <Text style={styles.fieldLabel}>Photos (optional)</Text>
@@ -664,7 +861,7 @@ export default function AddScreen() {
                 The property is saved. Retrying will only upload its photos.
               </Text>
             ) : null}
-          </View>
+          </View>}
 
           {submitError !== null && (
             <Text accessibilityRole="alert" style={styles.submitError}>
@@ -688,11 +885,14 @@ export default function AddScreen() {
               <Text style={styles.submitButtonText}>
                 {savedProperty !== null
                   ? 'Retry photo upload'
-                  : 'Publish Property'}
+                  : isEditing
+                    ? 'Save Changes'
+                    : 'Publish Property'}
               </Text>
             )}
           </Pressable>
         </ScrollView>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -782,6 +982,13 @@ const styles = StyleSheet.create({
   },
   keyboardAvoidingView: {
     flex: 1,
+  },
+  loadState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.lg,
+    padding: spacing.lg,
   },
   header: {
     minHeight: 56,

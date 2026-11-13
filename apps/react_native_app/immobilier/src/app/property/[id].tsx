@@ -53,6 +53,14 @@ function getPropertyTypeLabel(type: PropertyWithRelations['property_type']): str
 export default function PropertyDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const handleGoBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace('/');
+  }, [router]);
 
   const [property, setProperty] = useState<PropertyWithRelations | null>(null);
   const [loading, setLoading] = useState(true);
@@ -110,7 +118,7 @@ export default function PropertyDetailsScreen() {
         <Pressable style={styles.primaryButton} onPress={() => void loadProperty()}>
           <Text style={styles.primaryButtonText}>Try again</Text>
         </Pressable>
-        <Pressable style={styles.backTextButton} onPress={() => router.back()}>
+        <Pressable style={styles.backTextButton} onPress={handleGoBack}>
           <Text style={styles.backText}>Go back</Text>
         </Pressable>
       </SafeAreaView>
@@ -128,7 +136,7 @@ export default function PropertyDetailsScreen() {
 
       <View style={styles.topBar}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={handleGoBack}
           style={styles.iconButton}
           accessibilityRole="button"
           accessibilityLabel="Go back"

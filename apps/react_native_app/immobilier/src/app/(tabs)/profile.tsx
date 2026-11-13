@@ -377,6 +377,16 @@ export default function ProfileScreen() {
       <InfoRow icon="phone-outline" label="Phone" value={savedPhone} />
       <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
       <InfoRow icon="text-box-edit-outline" label="Bio" value={savedBio} />
+      <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
+      <Button
+        accessibilityLabel="View my listings"
+        icon="home-city-outline"
+        mode="outlined"
+        onPress={() => router.push('/my-listings')}
+        style={styles.myListingsButton}
+      >
+        My Listings
+      </Button>
     </View>
   );
 
@@ -648,6 +658,9 @@ const styles = StyleSheet.create({
   profileCard: {
     borderRadius: 16,
     overflow: 'hidden',
+  },
+  myListingsButton: {
+    marginTop: 16,
   },
   profileName: {
     maxWidth: '100%',
