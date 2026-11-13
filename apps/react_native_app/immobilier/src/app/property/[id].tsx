@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { getPropertyById } from '../../services/propertyService';
@@ -161,7 +161,8 @@ export default function PropertyDetailsScreen() {
                   key={image.id}
                   source={{ uri: image.image_url }}
                   style={styles.propertyImage}
-                  resizeMode="cover"
+                  contentFit="cover"
+                  alt={`${property.title} photo ${image.position + 1}`}
                 />
               ))}
             </ScrollView>
@@ -238,7 +239,12 @@ export default function PropertyDetailsScreen() {
             <Text style={styles.sectionTitle}>Owner</Text>
             <View style={styles.ownerCard}>
               {owner?.avatar_url ? (
-                <Image source={{ uri: owner.avatar_url }} style={styles.ownerAvatar} />
+                <Image
+                  source={{ uri: owner.avatar_url }}
+                  style={styles.ownerAvatar}
+                  contentFit="cover"
+                  alt="Property owner avatar"
+                />
               ) : (
                 <View style={styles.ownerAvatarPlaceholder}>
                   <Ionicons name="person" size={22} color={colors.secondary} />
