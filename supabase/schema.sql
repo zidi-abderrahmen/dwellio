@@ -39,7 +39,8 @@ create table public.property_images (
   position integer not null default 0,
   created_at timestamptz not null default now()
 );
-create index property_images_property_idx on public.property_images (property_id, position);
+create unique index property_images_property_position_key
+  on public.property_images (property_id, position);
 
 create table public.favorites (
   user_id uuid not null references public.profiles(id) on delete cascade,
