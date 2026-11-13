@@ -1,3 +1,5 @@
+import { decode } from 'base64-arraybuffer';
+
 import { supabase } from '../lib/supabase';
 import type {
   Property,
@@ -17,6 +19,32 @@ export type CreatePropertyInput = Pick<
   | 'rooms'
   | 'city'
 >;
+
+export interface PropertyImageUpload {
+  base64: string;
+  fileName: string;
+  position: number;
+  storagePath?: string;
+  imageUrl?: string;
+}
+
+export interface PropertyImageUploadResult {
+  fileName: string;
+  position: number;
+  uploaded: boolean;
+  storagePath?: string;
+  imageUrl?: string;
+  error?: string;
+}
+
+function isValidBase64(value: string): boolean {
+  return (
+    value.length > 0 &&
+    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+      value,
+    )
+  );
+}
 
 /**
  * Sorts a property's images by their display position.
@@ -220,4 +248,134 @@ export async function createProperty(
   }
 
   return data as Property;
+}
+
+/**
+ * Uploads images for an already-created property.
+ * The property ID and image positions make storage and metadata retries safe.
+ */
+export async function uploadPropertyImages(
+  propertyId: string,
+  images: readonly PropertyImageUpload[],
+  options: {
+    totalPhotos?: number;
+    onProgress?: (photoNumber: number, totalPhotos: number) => void;
+  } = {},
+): Promise<PropertyImageUploadResult[]> {
+  const savedPropertyId = propertyId.trim();
+  if (!savedPropertyId) {
+    throw new Error('A valid property ID is required to upload images.');
+  }
+
+  if (images.length === 0) {
+    return [];
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    throw new Error(`Failed to verify the current user: ${userError.message}`);
+  }
+
+  if (!user) {
+    throw new Error('You must be signed in to upload property images.');
+  }
+
+  const totalPhotos = options.totalPhotos ?? images.length;
+  const results: PropertyImageUploadResult[] = [];
+
+  for (const image of images) {
+    options.onProgress?.(image.position + 1, totalPhotos);
+
+    let storagePath = image.storagePath;
+    let imageUrl = image.imageUrl;
+
+    try {
+      if (!/^[A-Za-z0-9_-]+$/.test(image.fileName)) {
+        throw new Error('The image has an invalid file name.');
+      }
+
+      if (!Number.isInteger(image.position) || image.position < 0) {
+        throw new Error('The image has an invalid carousel position.');
+      }
+
+      if (!storagePath) {
+        if (!isValidBase64(image.base64)) {
+          throw new Error('The selected image does not contain valid base64 data.');
+        }
+
+        const nextStoragePath =
+          `${user.id}/${savedPropertyId}/${image.fileName}.jpg`;
+        const { error: uploadError } = await supabase.storage
+          .from('property-images')
+          .upload(nextStoragePath, decode(image.base64), {
+            contentType: 'image/jpeg',
+            upsert: true,
+          });
+
+        if (uploadError) {
+          throw new Error(`Storage upload failed: ${uploadError.message}`);
+        }
+
+        storagePath = nextStoragePath;
+      }
+
+      if (!imageUrl) {
+        const { data } = supabase.storage
+          .from('property-images')
+          .getPublicUrl(storagePath);
+        imageUrl = data.publicUrl;
+      }
+
+      const { error: imageError } = await supabase
+        .from('property_images')
+        .upsert(
+          {
+            property_id: savedPropertyId,
+            image_url: imageUrl,
+            storage_path: storagePath,
+            position: image.position,
+          },
+          {
+            onConflict: 'property_id,position',
+            ignoreDuplicates: true,
+          },
+        );
+
+      if (imageError) {
+        if (imageError.code === '42P10') {
+          throw new Error(
+            'Apply supabase/migrations/20261112_property_image_position_unique.sql to enable retry-safe image metadata.',
+          );
+        }
+
+        throw new Error(`Metadata insert failed: ${imageError.message}`);
+      }
+
+      results.push({
+        fileName: image.fileName,
+        position: image.position,
+        uploaded: true,
+        storagePath,
+        imageUrl,
+      });
+    } catch (error) {
+      results.push({
+        fileName: image.fileName,
+        position: image.position,
+        uploaded: false,
+        storagePath,
+        imageUrl,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Unexpected error while uploading the image.',
+      });
+    }
+  }
+
+  return results;
 }
