@@ -14,6 +14,34 @@ class PropertyCreationFailure implements Exception {
   String toString() => message;
 }
 
+class PropertyQueryFailure implements Exception {
+  const PropertyQueryFailure(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class PropertyDeletionFailure implements Exception {
+  const PropertyDeletionFailure(this.message, {this.propertyDeleted = false});
+
+  final String message;
+  final bool propertyDeleted;
+
+  @override
+  String toString() => message;
+}
+
+class PropertyUpdateFailure implements Exception {
+  const PropertyUpdateFailure(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 /// Sorts property images by their position.
 List<T> _sortPropertyImages<T>(
   List<T>? images,
@@ -236,6 +264,250 @@ class PropertyService {
         profiles: property.profiles,
       );
     }).toList();
+  }
+
+  /// Retrieves every property owned by the currently authenticated user.
+  Future<List<PropertyWithRelations>> getMyProperties() async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw const PropertyQueryFailure(
+        'Please sign in again to view your properties.',
+      );
+    }
+
+    final List<dynamic> response;
+    try {
+      response = await _client
+          .from('properties')
+          .select('*, property_images (*)')
+          .eq('owner_id', user.id)
+          .order('created_at', ascending: false);
+    } on PostgrestException catch (error) {
+      throw PropertyQueryFailure(
+        'Unable to load your properties: ${error.message}',
+      );
+    }
+
+    final rows = List<Map<String, dynamic>>.from(response);
+
+    return rows.map((row) {
+      final property = PropertyWithRelations.fromJson(row);
+      property.propertyImages.sort(
+        (first, second) => first.position.compareTo(second.position),
+      );
+      return property;
+    }).toList();
+  }
+
+  /// Retrieves one property only when it belongs to the current user.
+  Future<PropertyWithRelations> getMyPropertyById(String id) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw const PropertyQueryFailure(
+        'Please sign in again to edit this property.',
+      );
+    }
+
+    final propertyId = id.trim();
+    if (propertyId.isEmpty) {
+      throw const PropertyQueryFailure('A valid property ID is required.');
+    }
+
+    final Map<String, dynamic>? response;
+    try {
+      response = await _client
+          .from('properties')
+          .select('*, property_images (*)')
+          .eq('id', propertyId)
+          .eq('owner_id', user.id)
+          .maybeSingle();
+    } on PostgrestException catch (error) {
+      throw PropertyQueryFailure(
+        'Unable to load this property: ${error.message}',
+      );
+    }
+
+    if (response == null) {
+      throw const PropertyQueryFailure(
+        'This property could not be found or you do not have permission to edit it.',
+      );
+    }
+
+    final property = PropertyWithRelations.fromJson(response);
+    property.propertyImages.sort(
+      (first, second) => first.position.compareTo(second.position),
+    );
+    return property;
+  }
+
+  /// Updates supported property fields without changing the owner or ID.
+  Future<Property> updateProperty({
+    required String id,
+    required String title,
+    String? description,
+    required ListingType listingType,
+    required PropertyType propertyType,
+    required double price,
+    int? surfaceM2,
+    int? rooms,
+    required String city,
+  }) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw const PropertyUpdateFailure(
+        'Please sign in again to update this property.',
+      );
+    }
+
+    final propertyId = id.trim();
+    final normalizedTitle = title.trim();
+    final normalizedCity = city.trim();
+    final normalizedDescription = description?.trim();
+    if (propertyId.isEmpty ||
+        normalizedTitle.runes.length < 3 ||
+        normalizedTitle.runes.length > 120 ||
+        normalizedCity.isEmpty ||
+        !price.isFinite ||
+        price < 0 ||
+        price >= 10000000000 ||
+        (surfaceM2 != null && surfaceM2 <= 0) ||
+        (rooms != null && rooms < 0)) {
+      throw const PropertyUpdateFailure(
+        'Some property details do not meet the requirements.',
+      );
+    }
+
+    final payload = {
+      'title': normalizedTitle,
+      'description':
+          normalizedDescription == null || normalizedDescription.isEmpty
+          ? null
+          : normalizedDescription,
+      'listing_type': listingType.value,
+      'property_type': propertyType.value,
+      'price': price,
+      'surface_m2': surfaceM2,
+      'rooms': rooms,
+      'city': normalizedCity,
+    };
+
+    try {
+      final response = await _client
+          .from('properties')
+          .update(payload)
+          .eq('id', propertyId)
+          .eq('owner_id', user.id)
+          .select()
+          .maybeSingle();
+
+      if (response == null) {
+        throw const PropertyUpdateFailure(
+          'This property could not be found or you do not have permission to update it.',
+        );
+      }
+
+      return Property.fromJson(response);
+    } on PostgrestException catch (error) {
+      if (error.code == '42501') {
+        throw const PropertyUpdateFailure(
+          'You do not have permission to update this property.',
+        );
+      }
+      if (error.code == '23514' ||
+          error.code == '23502' ||
+          error.code == '22003') {
+        throw const PropertyUpdateFailure(
+          'Some property details do not meet the database requirements.',
+        );
+      }
+      throw PropertyUpdateFailure(
+        'The property could not be updated: ${error.message}',
+      );
+    }
+  }
+
+  /// Permanently deletes a property owned by the currently authenticated user.
+  Future<void> deleteProperty(String id) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw const PropertyDeletionFailure(
+        'Please sign in again to delete this property.',
+      );
+    }
+
+    final propertyId = id.trim();
+    if (propertyId.isEmpty) {
+      throw const PropertyDeletionFailure('A valid property ID is required.');
+    }
+
+    final Map<String, dynamic>? property;
+    try {
+      property = await _client
+          .from('properties')
+          .select('id, property_images (storage_path)')
+          .eq('id', propertyId)
+          .eq('owner_id', user.id)
+          .maybeSingle();
+    } on PostgrestException catch (error) {
+      throw PropertyDeletionFailure(
+        'Unable to prepare property deletion: ${error.message}',
+      );
+    }
+
+    if (property == null) {
+      throw const PropertyDeletionFailure(
+        'This property could not be found or you do not have permission to delete it.',
+      );
+    }
+
+    final imageRows = property['property_images'] as List<dynamic>? ?? [];
+    final storagePaths = imageRows
+        .map((row) => (row as Map<String, dynamic>)['storage_path'] as String)
+        .toSet()
+        .toList();
+    final propertyStoragePrefix = '${user.id}/$propertyId/';
+    if (storagePaths.any((path) => !path.startsWith(propertyStoragePrefix))) {
+      throw const PropertyDeletionFailure(
+        'The property contains an invalid photo storage path and cannot be deleted safely.',
+      );
+    }
+
+    try {
+      final deletedProperty = await _client
+          .from('properties')
+          .delete()
+          .eq('id', propertyId)
+          .eq('owner_id', user.id)
+          .select('id')
+          .maybeSingle();
+      if (deletedProperty == null) {
+        throw const PropertyDeletionFailure(
+          'This property could not be found or you do not have permission to delete it.',
+        );
+      }
+    } on PostgrestException catch (error) {
+      throw PropertyDeletionFailure(
+        'Unable to delete this property: ${error.message}',
+      );
+    }
+
+    if (storagePaths.isEmpty) return;
+
+    try {
+      await _client.storage
+          .from(SupabaseConfig.propertyImagesBucket)
+          .remove(storagePaths);
+    } on StorageException catch (error) {
+      throw PropertyDeletionFailure(
+        'The property was deleted, but some photos could not be removed from storage: ${error.message}',
+        propertyDeleted: true,
+      );
+    } catch (error) {
+      throw PropertyDeletionFailure(
+        'The property was deleted, but some photos could not be removed from storage: $error',
+        propertyDeleted: true,
+      );
+    }
   }
 
   /// Retrieves a property and its relations by ID.

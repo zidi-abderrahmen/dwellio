@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../screens/property/add_property_screen.dart';
 import '../screens/property/property_details_screen.dart';
+import '../screens/property/my_listings_screen.dart';
 import '../main.dart' show HomeScreen;
 import '../providers/auth_providers.dart';
 import '../screens/auth/login_screen.dart';
@@ -20,27 +21,33 @@ abstract final class AppRoutes {
   static const add = '/add';
   static const chats = '/chats';
   static const profile = '/profile';
+  static const myListings = '/profile/my-listings';
   static const propertyDetails = '/property/:id';
 
   /// Same order as the bottom navigation tabs
   static const tabs = [home, favorites, add, chats, profile];
 
   /// Tabs that require an account
-  static const protectedPaths = {favorites, add, chats, profile};
+  static const protectedPaths = {favorites, add, chats, profile, myListings};
 
   static bool isAuthPage(String location) =>
       location == login || location == register;
+
+  static bool isProtectedLocation(String location) =>
+      protectedPaths.contains(location) || location.startsWith('$myListings/');
 
   static String loginLocation({String? from}) => _withFrom(login, from);
   static String registerLocation({String? from}) => _withFrom(register, from);
 
   static String _withFrom(String path, String? from) {
-    if (from == null || !tabs.contains(from)) return path;
+    if (from == null || !protectedPaths.contains(from)) return path;
     return Uri(path: path, queryParameters: {'from': from}).toString();
   }
 
   static String propertyDetailsLocation(String id) =>
       '/property/${Uri.encodeComponent(id)}';
+  static String editPropertyLocation(String id) =>
+      '$myListings/${Uri.encodeComponent(id)}/edit';
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -55,13 +62,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       final loggedIn = ref.read(sessionProvider) != null;
       final location = state.matchedLocation;
 
-      if (!loggedIn && AppRoutes.protectedPaths.contains(location)) {
+      if (!loggedIn && AppRoutes.isProtectedLocation(location)) {
         return AppRoutes.loginLocation(from: location);
       }
 
       if (loggedIn && AppRoutes.isAuthPage(location)) {
         final from = state.uri.queryParameters['from'];
-        if (from != null && AppRoutes.tabs.contains(from)) return from;
+        if (from != null && AppRoutes.isProtectedLocation(from)) {
+          return from;
+        }
         return AppRoutes.home;
       }
 
@@ -130,6 +139,20 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: AppRoutes.profile,
                 builder: (context, state) => const ProfileScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'my-listings',
+                    builder: (context, state) => const MyListingsScreen(),
+                    routes: [
+                      GoRoute(
+                        path: ':id/edit',
+                        builder: (context, state) => AddPropertyScreen(
+                          propertyId: state.pathParameters['id']!,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ],
           ),
