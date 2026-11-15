@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:immobilier/providers/profile_providers.dart';
 import 'package:immobilier/services/profile_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/router.dart';
 import '../../core/theme.dart';
@@ -98,10 +99,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _passwordController.clear();
   }
 
-  // TODO(upload): upload [file] to Supabase Storage and return its public URL.
-  // Until the image uploader service exists, the current avatar URL is kept.
   Future<String> _uploadAvatar(File file) async {
-    return _avatarUrl ?? '';
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null || userId.isEmpty) {
+      throw Exception('You must be signed in to upload an avatar.');
+    }
+
+    final storagePath = '$userId/avatar.jpg';
+
+    await Supabase.instance.client.storage.from('avatars').upload(
+      storagePath,
+      file,
+      fileOptions: const FileOptions(
+        contentType: 'image/jpeg',
+        upsert: true,
+      ),
+    );
+
+    return Supabase.instance.client.storage
+        .from('avatars')
+        .getPublicUrl(storagePath);
   }
 
   // -----------------------------------------------
@@ -382,6 +399,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  Widget _buildMyListingsAction() {
+    return Card(
+      margin: EdgeInsets.zero,
+      color: AppColors.surface,
+      child: ListTile(
+        leading: const Icon(Icons.home_work_outlined, color: AppColors.primary),
+        title: const Text('My listings'),
+        subtitle: const Text('View the properties you have published'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => context.push(AppRoutes.myListings),
+      ),
+    );
+  }
+
   // -----------------------------------------------
   // Edit mode
   // -----------------------------------------------
@@ -590,6 +621,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ? _buildEditContent()
                           : _buildViewContent(),
                     ),
+                    if (!_isEditing) ...[
+                      const SizedBox(height: 16),
+                      _buildMyListingsAction(),
+                    ],
                     if (_isEditing) ...[
                       const SizedBox(height: 24),
                       _buildEditActions(),

@@ -26,7 +26,6 @@ class UserProfile {
   }
 }
 
-
 class ProfileFailure implements Exception {
   const ProfileFailure(this.message);
 
@@ -41,8 +40,7 @@ class ProfileService {
 
   final SupabaseClient _client;
 
-  static const String _profileColumns =
-      'id, full_name, phone, avatar_url, bio';
+  static const String _profileColumns = 'id, full_name, phone, avatar_url, bio';
 
   /// Retrieves the currently authenticated user's profile.
   Future<UserProfile> getMyProfile() async {
