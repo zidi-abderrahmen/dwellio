@@ -14,6 +14,7 @@ import 'providers/property_providers.dart';
 import 'screens/property/property_filter_sheet.dart';
 import 'widgets/property_card.dart';
 import 'models/property_models.dart' as property_models;
+import 'providers/favorite_providers.dart';
 import 'services/property_service.dart';
 
 // --------------------------------------------------
@@ -103,7 +104,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  final Set<String> _favorites = <String>{};
   final TextEditingController _citySearchController = TextEditingController();
   final PropertyService _propertyService = PropertyService();
 
@@ -127,9 +127,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _loadProperties();
-      }
+      if (!mounted) return;
+      _loadProperties();
+      ref.read(favoritePropertyIdsProvider.notifier).load();
     });
   }
 
@@ -270,20 +270,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // Toggle Favorite
   // -----------------------------------------------
 
-  void _toggleFavorite(String id) {
+  Future<void> _toggleFavorite(String id) async {
     // Guests must sign in before they can favorite a property.
     if (ref.read(sessionProvider) == null) {
       context.push(AppRoutes.loginLocation(from: AppRoutes.home));
       return;
     }
 
-    setState(() {
-      if (_favorites.contains(id)) {
-        _favorites.remove(id);
+    final notifier = ref.read(favoritePropertyIdsProvider.notifier);
+    final wasFavorited = ref
+        .read(favoritePropertyIdsProvider)
+        .contains(id);
+
+    try {
+      if (wasFavorited) {
+        await notifier.remove(id);
       } else {
-        _favorites.add(id);
+        await notifier.add(id);
       }
-    });
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              error.toString().startsWith('Exception:')
+                  ? error.toString().substring('Exception:'.length).trim()
+                  : error.toString(),
+            ),
+          ),
+        );
+      }
+    }
   }
 
   // -----------------------------------------------
@@ -294,6 +311,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final item = _properties[index];
 
     final cardProperty = _toHomeProperty(item);
+
+    final favoriteIds = ref.watch(favoritePropertyIdsProvider);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -306,7 +325,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           variant: PropertyCardVariant.standard,
           currencyLabel: 'DT',
           period: item.listingType == 'rent' ? '/ mois' : null,
-          favorite: _favorites.contains(item.id),
+          favorite: favoriteIds.contains(item.id),
           onFavoritePress: () {
             _toggleFavorite(item.id);
           },
@@ -422,12 +441,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (previous != next) _loadProperties();
     });
 
-    // Clear local favorites after logout.
+    // Clear / load favorites when the session changes.
     ref.listen(sessionProvider, (previous, next) {
-      if (next == null && _favorites.isNotEmpty) {
-        setState(() {
-          _favorites.clear();
-        });
+      final notifier = ref.read(favoritePropertyIdsProvider.notifier);
+      if (next == null) {
+        // Logout: clear the previous user's favorite IDs.
+        notifier.clear();
+        return;
+      }
+
+      if (previous == null) {
+        // Login: load the new user's favorite IDs.
+        notifier.load();
       }
     });
 
