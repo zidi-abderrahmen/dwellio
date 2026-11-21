@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/router.dart';
 import '../../core/theme.dart';
 import '../../models/property_models.dart';
+import '../../providers/auth_providers.dart';
+import '../../providers/favorite_providers.dart';
 import '../../services/property_service.dart';
 
 // --------------------------------------------------
@@ -50,7 +54,7 @@ String getPropertyTypeLabel(String type) {
 // Property Details Screen
 // --------------------------------------------------
 
-class PropertyDetailsScreen extends StatefulWidget {
+class PropertyDetailsScreen extends ConsumerStatefulWidget {
   const PropertyDetailsScreen({
     super.key,
     required this.propertyId,
@@ -59,11 +63,11 @@ class PropertyDetailsScreen extends StatefulWidget {
   final String propertyId;
 
   @override
-  State<PropertyDetailsScreen> createState() =>
+  ConsumerState<PropertyDetailsScreen> createState() =>
       _PropertyDetailsScreenState();
 }
 
-class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
+class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
   final PropertyService _propertyService = PropertyService();
 
   PropertyWithRelations? _property;
@@ -84,6 +88,12 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   void initState() {
     super.initState();
     _loadProperty();
+    _loadFavoriteIds();
+  }
+
+  Future<void> _loadFavoriteIds() async {
+    if (ref.read(sessionProvider) == null) return;
+    await ref.read(favoritePropertyIdsProvider.notifier).load();
   }
 
   @override
@@ -158,6 +168,41 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   void _goBack() {
     if (context.canPop()) {
       context.pop();
+    }
+  }
+
+  // -----------------------------------------------
+  // Favorite
+  // -----------------------------------------------
+
+  Future<void> _toggleFavorite() async {
+    if (ref.read(sessionProvider) == null) {
+      context.push(AppRoutes.loginLocation(from: AppRoutes.favorites));
+      return;
+    }
+
+    final notifier = ref.read(favoritePropertyIdsProvider.notifier);
+    final wasFavorited = ref
+        .read(favoritePropertyIdsProvider)
+        .contains(widget.propertyId);
+
+    try {
+      if (wasFavorited) {
+        await notifier.remove(widget.propertyId);
+      } else {
+        await notifier.add(widget.propertyId);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.toString().startsWith('Exception:')
+                ? error.toString().substring('Exception:'.length).trim()
+                : error.toString(),
+          ),
+        ),
+      );
     }
   }
 
@@ -271,6 +316,9 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   // -----------------------------------------------
 
   Widget _buildTopBar() {
+    final favorited = ref.watch(favoritePropertyIdsProvider)
+        .contains(widget.propertyId);
+
     return Container(
       constraints: const BoxConstraints(minHeight: 56),
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -303,7 +351,16 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
               color: AppColors.onSurface,
             ),
           ),
-          const SizedBox(width: 40, height: 40),
+          IconButton(
+            icon: Icon(
+              favorited ? Icons.favorite : Icons.favorite_border,
+              color: favorited ? AppColors.favorite : AppColors.secondary,
+            ),
+            onPressed: _toggleFavorite,
+            tooltip: favorited
+                ? 'Remove from favorites'
+                : 'Add to favorites',
+          ),
         ],
       ),
     );
