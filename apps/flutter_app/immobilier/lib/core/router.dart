@@ -9,6 +9,7 @@ import '../main.dart' show HomeScreen;
 import '../providers/auth_providers.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/register_screen.dart';
+import '../screens/favorites/favorites_screen.dart';
 import '../screens/placeholder_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/shell/main_shell.dart';
@@ -112,8 +113,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: AppRoutes.favorites,
-                builder: (context, state) =>
-                    const PlaceholderScreen(title: 'Favorites'),
+                builder: (context, state) => const FavoritesScreen(),
               ),
             ],
           ),
