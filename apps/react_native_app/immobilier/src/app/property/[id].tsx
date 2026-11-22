@@ -18,6 +18,7 @@ import { getPropertyById } from '../../services/propertyService';
 import { useFavorite } from '../../context/FavoriteContext';
 import type { PropertyWithRelations } from '../../types/property';
 import { theme, spacing, radius, typography } from '../../theme';
+import MapView, { Marker } from 'react-native-maps';
 
 const colors = theme.colors;
 const screenWidth = Dimensions.get('window').width;
@@ -229,6 +230,41 @@ export default function PropertyDetailsScreen() {
  <View style={styles.imagePlaceholder}>
  <Ionicons name="home-outline" size={56} color={colors.placeholder} />
  <Text style={styles.placeholderText}>No images available</Text>
+ </View>
+ )}
+
+ {property.latitude != null && property.longitude != null ? (
+ <View style={styles.mapContainer}>
+ <MapView
+ style={styles.map}
+ initialRegion={{
+ latitude: property.latitude,
+ longitude: property.longitude,
+ latitudeDelta: 0.015,
+ longitudeDelta: 0.015,
+ }}
+ showsUserLocation={false}
+ showsCompass={false}
+ >
+ <Marker
+ coordinate={{
+ latitude: property.latitude,
+ longitude: property.longitude,
+ }}
+ title={property.title}
+ description={property.city}
+ />
+ </MapView>
+ <Text style={styles.mapCaption}>
+ {property.city} · {property.address ?? 'Location'}
+ </Text>
+ </View>
+ ) : (
+ <View style={styles.mapPlaceholderContainer}>
+ <Ionicons name="map-outline" size={48} color={colors.placeholder} />
+ <Text style={styles.mapPlaceholderText}>
+ No location available for this property
+ </Text>
  </View>
  )}
 
@@ -544,5 +580,39 @@ const styles = StyleSheet.create({
  ownerPhone: {
  ...typography.body,
  color: colors.secondary,
+ },
+ mapContainer: {
+ width: '100%',
+ height: 240,
+ marginBottom: spacing.md,
+ backgroundColor: colors.surfaceVariant,
+ borderRadius: radius.md,
+ overflow: 'hidden',
+ },
+ map: {
+ width: '100%',
+ height: '100%',
+ },
+ mapCaption: {
+ paddingHorizontal: spacing.lg,
+ paddingTop: spacing.xs,
+ ...typography.body,
+ color: colors.secondary,
+ textAlign: 'center',
+ },
+ mapPlaceholderContainer: {
+ width: '100%',
+ height: 240,
+ marginBottom: spacing.md,
+ alignItems: 'center',
+ justifyContent: 'center',
+ backgroundColor: colors.surfaceVariant,
+ borderRadius: radius.md,
+ gap: spacing.sm,
+ },
+ mapPlaceholderText: {
+ ...typography.body,
+ color: colors.secondary,
+ textAlign: 'center',
  },
 });
