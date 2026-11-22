@@ -2,17 +2,18 @@ import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import {
-  Stack,
-  useGlobalSearchParams,
-  usePathname,
-  useRouter,
-  type Href,
+ Stack,
+ useGlobalSearchParams,
+ usePathname,
+ useRouter,
+ type Href,
 } from 'expo-router';
 
 import {
-  AuthProvider,
-  useAuthSession,
+ AuthProvider,
+ useAuthSession,
 } from '../context/AuthContext';
+import { FavoriteProvider } from '../context/FavoriteContext';
 
 // --------------------------------------------------
 // Routes
@@ -21,20 +22,20 @@ import {
 const AUTH_ROUTES = ['/login', '/register'] as const;
 
 const AUTH_REDIRECT_ROUTES = [
-  '/',
-  '/favorites',
-  '/add',
-  '/chats',
-  '/profile',
-  '/my-listings',
+ '/',
+ '/favorites',
+ '/add',
+ '/chats',
+ '/profile',
+ '/my-listings',
 ] as const;
 
 const PROTECTED_ROUTES = [
-  '/favorites',
-  '/add',
-  '/chats',
-  '/profile',
-  '/my-listings',
+ '/favorites',
+ '/add',
+ '/chats',
+ '/profile',
+ '/my-listings',
 ] as const;
 
 // --------------------------------------------------
@@ -42,12 +43,12 @@ const PROTECTED_ROUTES = [
 // --------------------------------------------------
 
 function isAuthRedirectRoute(
-  location: unknown,
+ location: unknown,
 ): location is (typeof AUTH_REDIRECT_ROUTES)[number] {
-  return (
-    typeof location === 'string' &&
-    (AUTH_REDIRECT_ROUTES as readonly string[]).includes(location)
-  );
+ return (
+ typeof location === 'string' &&
+ (AUTH_REDIRECT_ROUTES as readonly string[]).includes(location)
+ );
 }
 
 // --------------------------------------------------
@@ -55,62 +56,62 @@ function isAuthRedirectRoute(
 // --------------------------------------------------
 
 function RootNavigator() {
-  const router = useRouter();
-  const pathname = usePathname();
+ const router = useRouter();
+ const pathname = usePathname();
 
-  const params = useGlobalSearchParams<{
-    from?: string | string[];
-  }>();
+ const params = useGlobalSearchParams<{
+ from?: string | string[];
+ }>();
 
-  const { session, isLoading } = useAuthSession();
+ const { session, isLoading } = useAuthSession();
 
-  const from = Array.isArray(params.from)
-    ? params.from[0]
-    : params.from;
+ const from = Array.isArray(params.from)
+ ? params.from[0]
+ : params.from;
 
-  useEffect(() => {
-    if (isLoading) return;
+ useEffect(() => {
+ if (isLoading) return;
 
-    const loggedIn = session !== null;
+ const loggedIn = session !== null;
 
-    const isAuthPage = (
-      AUTH_ROUTES as readonly string[]
-    ).includes(pathname);
+ const isAuthPage = (
+ AUTH_ROUTES as readonly string[]
+ ).includes(pathname);
 
-    const isProtectedPage = (
-      PROTECTED_ROUTES as readonly string[]
-    ).includes(pathname);
+ const isProtectedPage = (
+ PROTECTED_ROUTES as readonly string[]
+ ).includes(pathname);
 
-    // Guest trying to access a protected route.
-    if (!loggedIn && isProtectedPage) {
-      router.replace({
-        pathname: '/login',
-        params: { from: pathname },
-      });
+ // Guest trying to access a protected route.
+ if (!loggedIn && isProtectedPage) {
+ router.replace({
+ pathname: '/login',
+ params: { from: pathname },
+ });
 
-      return;
-    }
+ return;
+ }
 
-    // Authenticated user trying to access Login/Register.
-    if (loggedIn && isAuthPage) {
-      const destination = isAuthRedirectRoute(from) ? from : '/';
+ // Authenticated user trying to access Login/Register.
+ if (loggedIn && isAuthPage) {
+ const destination = isAuthRedirectRoute(from) ? from : '/';
 
-      router.replace(destination as Href);
-    }
-  }, [from, isLoading, pathname, router, session]);
+ router.replace(destination as Href);
+ }
+ }, [from, isLoading, pathname, router, session]);
 
-  // Wait for the initial Supabase session.
-  if (isLoading) {
-    return null;
-  }
+ // Wait for the initial Supabase session.
+ if (isLoading) {
+ return null;
+ }
 
-  return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(auth)" />
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="my-listings" />
-    </Stack>
-  );
+ return (
+ <Stack screenOptions={{ headerShown: false }}>
+ <Stack.Screen name="(auth)" />
+ <Stack.Screen name="(tabs)" />
+ <Stack.Screen name="my-listings" />
+ </Stack>
+ );
 }
 
 // --------------------------------------------------
@@ -118,11 +119,13 @@ function RootNavigator() {
 // --------------------------------------------------
 
 export default function RootLayout() {
-  return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <RootNavigator />
-      </AuthProvider>
-    </SafeAreaProvider>
-  );
+ return (
+ <SafeAreaProvider>
+ <AuthProvider>
+ <FavoriteProvider>
+ <RootNavigator />
+ </FavoriteProvider>
+ </AuthProvider>
+ </SafeAreaProvider>
+ );
 }
