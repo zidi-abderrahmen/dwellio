@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../core/router.dart';
 import '../../core/theme.dart';
@@ -559,6 +561,75 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
     );
   }
 
+  Widget _buildPropertyMap(PropertyWithRelations property) {
+    final latitude = property.latitude;
+    final longitude = property.longitude;
+    final hasValidCoordinates =
+        latitude != null &&
+        longitude != null &&
+        latitude.isFinite &&
+        longitude.isFinite &&
+        latitude >= -90 &&
+        latitude <= 90 &&
+        longitude >= -180 &&
+        longitude <= 180;
+
+    if (!hasValidCoordinates) {
+      return Container(
+        height: 220,
+        width: double.infinity,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceVariant,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Text(
+          'Map unavailable: property coordinates are not available.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.secondary),
+        ),
+      );
+    }
+
+    final propertyLocation = LatLng(latitude, longitude);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        height: 220,
+        width: double.infinity,
+        child: FlutterMap(
+          options: MapOptions(initialCenter: propertyLocation, initialZoom: 15),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            ),
+            MarkerLayer(
+              markers: [
+                Marker(
+                  point: propertyLocation,
+                  width: 40,
+                  height: 40,
+                  child: const Icon(
+                    Icons.location_on,
+                    color: AppColors.primary,
+                    size: 40,
+                  ),
+                ),
+              ],
+            ),
+            RichAttributionWidget(
+              attributions: [
+                TextSourceAttribution('OpenStreetMap contributors'),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // -----------------------------------------------
   // Property tags
   // -----------------------------------------------
@@ -873,6 +944,13 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
                             _buildSection(
                               title: 'Description',
                               child: _buildDescription(property),
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            _buildSection(
+                              title: 'Map',
+                              child: _buildPropertyMap(property),
                             ),
 
                             const SizedBox(height: 24),
