@@ -21,6 +21,7 @@ class ChatConversation {
     required this.propertyTitle,
     required this.buyer,
     required this.owner,
+    this.lastMessageAt,
   });
 
   final String id;
@@ -30,6 +31,7 @@ class ChatConversation {
   final String propertyTitle;
   final ChatParticipant buyer;
   final ChatParticipant owner;
+  final DateTime? lastMessageAt;
 
   factory ChatConversation.fromJson(Map<String, dynamic> json) {
     final property = _relationToMap(json['properties']);
@@ -41,6 +43,38 @@ class ChatConversation {
       propertyTitle: property?['title'] as String? ?? 'Property',
       buyer: ChatParticipant.fromJson(_relationToMap(json['buyer'])),
       owner: ChatParticipant.fromJson(_relationToMap(json['owner'])),
+      lastMessageAt: json['last_message_at'] == null
+          ? null
+          : DateTime.parse(json['last_message_at'] as String),
+    );
+  }
+}
+
+class ChatMessage {
+  const ChatMessage({
+    required this.id,
+    required this.chatId,
+    required this.senderId,
+    required this.content,
+    required this.isRead,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String chatId;
+  final String senderId;
+  final String content;
+  final bool isRead;
+  final DateTime createdAt;
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    return ChatMessage(
+      id: json['id'] as String,
+      chatId: json['chat_id'] as String,
+      senderId: json['sender_id'] as String,
+      content: json['content'] as String,
+      isRead: json['is_read'] as bool,
+      createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
 }

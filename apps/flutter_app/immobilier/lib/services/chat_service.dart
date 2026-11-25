@@ -11,12 +11,89 @@ class ChatServiceFailure implements Exception {
   String toString() => message;
 }
 
-/// Handles chat creation and retrieval for the authenticated buyer.
+/// Provides chat and message operations for the authenticated user.
 class ChatService {
   ChatService([SupabaseClient? client])
     : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
+
+  /// Streams the messages for a single conversation in chronological order.
+  Stream<List<Map<String, dynamic>>> getMessages(String chatId) {
+    final normalizedChatId = chatId.trim();
+    if (normalizedChatId.isEmpty) {
+      throw const ChatServiceFailure('A valid conversation is required.');
+    }
+
+    return _client
+        .from('messages')
+        .stream(primaryKey: ['id'])
+        .eq('chat_id', normalizedChatId)
+        .order('created_at');
+  }
+
+  /// Inserts a message as the currently authenticated user.
+  Future<void> sendMessage(String chatId, String content) async {
+    final message = content.trim();
+    if (message.isEmpty) return;
+    if (message.length > 2000) {
+      throw const ChatServiceFailure('Message cannot exceed 2000 characters.');
+    }
+
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw const ChatServiceFailure('Please sign in to send a message.');
+    }
+
+    final normalizedChatId = chatId.trim();
+    if (normalizedChatId.isEmpty) {
+      throw const ChatServiceFailure('A valid conversation is required.');
+    }
+
+    try {
+      await _client.from('messages').insert({
+        'chat_id': normalizedChatId,
+        'sender_id': user.id,
+        'content': message,
+      });
+    } on PostgrestException catch (error) {
+      throw ChatServiceFailure('Unable to send message: ${error.message}');
+    } catch (error) {
+      throw ChatServiceFailure('Unable to send message: $error');
+    }
+  }
+
+  /// Marks unread messages from the other participant as read.
+  Future<void> markReceivedMessagesAsRead(String chatId) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw const ChatServiceFailure(
+        'Please sign in to update message read status.',
+      );
+    }
+
+    final normalizedChatId = chatId.trim();
+    if (normalizedChatId.isEmpty) {
+      throw const ChatServiceFailure('A valid conversation is required.');
+    }
+
+    try {
+      await _client
+          .from('messages')
+          .update({'is_read': true})
+          .eq('chat_id', normalizedChatId)
+          .neq('sender_id', user.id)
+          .eq('is_read', false);
+    } on PostgrestException catch (error) {
+      throw ChatServiceFailure(
+        'Unable to mark received messages as read: ${error.message}',
+      );
+    } catch (error) {
+      throw ChatServiceFailure(
+        'Unable to mark received messages as read: $error',
+      );
+    }
+  }
 
   /// Returns conversations visible to the currently authenticated user.
   Future<List<ChatConversation>> getConversations() async {
