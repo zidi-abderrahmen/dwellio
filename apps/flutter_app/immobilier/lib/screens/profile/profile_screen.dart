@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:immobilier/providers/profile_providers.dart';
 import 'package:immobilier/services/profile_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/router.dart';
 import '../../core/theme.dart';
@@ -39,7 +36,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   String? _avatarUrl;
 
   /// Image chosen from the phone gallery, not uploaded yet.
-  File? _pickedImage;
+  XFile? _pickedImage;
+  Uint8List? _pickedImageBytes;
 
   // Last saved values, shown in view mode and restored on cancel.
   String _savedFullName = '';
@@ -99,37 +97,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _passwordController.clear();
   }
 
-  Future<String> _uploadAvatar(File file) async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null || userId.isEmpty) {
-      throw Exception('You must be signed in to upload an avatar.');
-    }
-
-    final storagePath = '$userId/avatar.jpg';
-
-    await Supabase.instance.client.storage.from('avatars').upload(
-      storagePath,
-      file,
-      fileOptions: const FileOptions(
-        contentType: 'image/jpeg',
-        upsert: true,
-      ),
-    );
-
-    return Supabase.instance.client.storage
-        .from('avatars')
-        .getPublicUrl(storagePath);
-  }
-
   // -----------------------------------------------
   // Actions
   // -----------------------------------------------
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _startEditing() {
@@ -141,6 +116,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     setState(() {
       _resetControllers();
       _pickedImage = null;
+      _pickedImageBytes = null;
       _obscurePassword = true;
       _isEditing = false;
     });
@@ -157,7 +133,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
       if (picked == null || !mounted) return;
 
-      setState(() => _pickedImage = File(picked.path));
+      final bytes = await picked.readAsBytes();
+      if (bytes.isEmpty) {
+        _showMessage('The selected photo could not be read.');
+        return;
+      }
+
+      setState(() {
+        _pickedImage = picked;
+        _pickedImageBytes = bytes;
+      });
     } on PlatformException {
       _showMessage('Could not open your gallery.');
     }
@@ -176,11 +161,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       var avatarUrl = _avatarUrl ?? '';
       final image = _pickedImage;
       if (image != null) {
-        avatarUrl = await _uploadAvatar(image);
+        final imageBytes = _pickedImageBytes;
+        if (imageBytes == null || imageBytes.isEmpty) {
+          throw const ProfileFailure(
+            'The selected photo could not be read. Please choose it again.',
+          );
+        }
+
+        avatarUrl = await ref
+            .read(profileServiceProvider)
+            .uploadAvatar(fileName: image.name, bytes: imageBytes);
       }
 
       // Update profile information in public.profiles.
-      await ref.read(profileServiceProvider).updateMyProfile(
+      final savedProfile = await ref
+          .read(profileServiceProvider)
+          .updateMyProfile(
             fullName: _fullNameController.text,
             phone: _phoneController.text,
             avatarUrl: avatarUrl,
@@ -195,11 +191,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
 
       setState(() {
-        _savedFullName = _fullNameController.text;
-        _savedPhone = _phoneController.text;
-        _savedBio = _bioController.text;
-        _avatarUrl = avatarUrl.isEmpty ? null : avatarUrl;
+        _savedFullName = savedProfile.fullName;
+        _savedPhone = savedProfile.phone ?? '';
+        _savedBio = savedProfile.bio ?? '';
+        _avatarUrl = savedProfile.avatarUrl;
         _pickedImage = null;
+        _pickedImageBytes = null;
         _passwordController.clear();
         _obscurePassword = true;
         _isEditing = false;
@@ -241,11 +238,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget _buildAvatar() {
     final avatarUrl = _avatarUrl;
 
-    final ImageProvider<Object>? image = _pickedImage != null
-        ? FileImage(_pickedImage!)
+    final pickedImageBytes = _pickedImageBytes;
+    final ImageProvider<Object>? image = pickedImageBytes != null
+        ? MemoryImage(pickedImageBytes)
         : (avatarUrl != null && avatarUrl.isNotEmpty
-            ? NetworkImage(avatarUrl)
-            : null);
+              ? NetworkImage(avatarUrl)
+              : null);
 
     final avatar = Container(
       width: 104,
@@ -390,11 +388,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           value: _savedPhone,
         ),
         divider,
-        _InfoRow(
-          icon: Icons.edit_note,
-          label: 'Bio',
-          value: _savedBio,
-        ),
+        _InfoRow(icon: Icons.edit_note, label: 'Bio', value: _savedBio),
       ],
     );
   }
@@ -438,19 +432,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             fontSize: 16,
             color: AppColors.secondary,
           ),
-          decoration: authInputDecoration(
-            label: 'Email',
-            icon: Icons.email_outlined,
-            suffixIcon: const Icon(Icons.lock_outline, size: 20),
-          ).copyWith(
-            fillColor: AppColors.surfaceVariant,
-            helperText: 'Email cannot be changed.',
-            helperStyle: _helperStyle,
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.outline),
-            ),
-          ),
+          decoration:
+              authInputDecoration(
+                label: 'Email',
+                icon: Icons.email_outlined,
+                suffixIcon: const Icon(Icons.lock_outline, size: 20),
+              ).copyWith(
+                fillColor: AppColors.surfaceVariant,
+                helperText: 'Email cannot be changed.',
+                helperStyle: _helperStyle,
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.outline),
+                ),
+              ),
         ),
         const SizedBox(height: 16),
         TextFormField(
@@ -498,23 +493,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           obscureText: _obscurePassword,
           textInputAction: TextInputAction.done,
           autofillHints: const [AutofillHints.newPassword],
-          decoration: authInputDecoration(
-            label: 'New password (optional)',
-            icon: Icons.lock_outline,
-            suffixIcon: IconButton(
-              onPressed: () =>
-                  setState(() => _obscurePassword = !_obscurePassword),
-              icon: Icon(
-                _obscurePassword
-                    ? Icons.visibility_outlined
-                    : Icons.visibility_off_outlined,
+          decoration:
+              authInputDecoration(
+                label: 'New password (optional)',
+                icon: Icons.lock_outline,
+                suffixIcon: IconButton(
+                  onPressed: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
+                  icon: Icon(
+                    _obscurePassword
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                  ),
+                ),
+              ).copyWith(
+                helperText: 'Leave blank to keep your current password.',
+                helperStyle: _helperStyle,
+                helperMaxLines: 2,
               ),
-            ),
-          ).copyWith(
-            helperText: 'Leave blank to keep your current password.',
-            helperStyle: _helperStyle,
-            helperMaxLines: 2,
-          ),
           validator: (value) {
             if (value != null && value.isNotEmpty && value.length < 6) {
               return 'Password must be at least 6 characters.';

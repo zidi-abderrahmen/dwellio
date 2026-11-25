@@ -64,7 +64,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                 if (notifications.isEmpty) return _buildEmptyState(context);
 
                 return ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
                   itemCount: notifications.length + 1,
                   itemBuilder: (context, index) {
                     if (index == 0) {
@@ -84,7 +84,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
   Widget _buildListHeader(BuildContext context, int count) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 4, 4, 14),
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 18),
       child: Row(
         children: [
           Expanded(
@@ -135,19 +135,19 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     };
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 12),
       child: Material(
         color: unread
             ? AppColors.primary.withValues(alpha: 0.055)
             : AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         child: InkWell(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           onTap: opening ? null : () => _openNotification(notification, feed),
           child: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: unread
                     ? AppColors.primary.withValues(alpha: 0.2)

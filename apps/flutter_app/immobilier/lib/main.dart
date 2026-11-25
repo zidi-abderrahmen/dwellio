@@ -15,6 +15,7 @@ import 'providers/property_providers.dart';
 import 'screens/property/property_filter_sheet.dart';
 import 'screens/notifications/notification_bell.dart';
 import 'widgets/property_card.dart';
+import 'widgets/dwellio_launch_splash.dart';
 import 'models/property_models.dart' as property_models;
 import 'providers/favorite_providers.dart';
 import 'services/property_service.dart';
@@ -47,23 +48,12 @@ class ImmobilierApp extends ConsumerWidget {
     final router = ref.watch(routerProvider);
 
     return MaterialApp.router(
-      title: 'Immobilier',
+      title: 'Dwellio',
       debugShowCheckedModeBanner: false,
       routerConfig: router,
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: AppFontConfig.fontFamily,
-        scaffoldBackgroundColor: AppColors.background,
-        colorScheme: const ColorScheme.light(
-          primary: AppColors.primary,
-          onPrimary: AppColors.onPrimary,
-          secondary: AppColors.secondary,
-          onSecondary: AppColors.onSecondary,
-          surface: AppColors.surface,
-          onSurface: AppColors.onSurface,
-          error: AppColors.error,
-        ),
-      ),
+      builder: (context, child) =>
+          DwellioLaunchSplash(child: child ?? const SizedBox.shrink()),
+      theme: AppTheme.light,
     );
   }
 }
@@ -281,9 +271,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     final notifier = ref.read(favoritePropertyIdsProvider.notifier);
-    final wasFavorited = ref
-        .read(favoritePropertyIdsProvider)
-        .contains(id);
+    final wasFavorited = ref.read(favoritePropertyIdsProvider).contains(id);
 
     try {
       if (wasFavorited) {
@@ -493,7 +481,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             ),
                           ),
                           Text(
-                            'Immobilier',
+                            'Dwellio',
                             style: Theme.of(context).textTheme.headlineMedium
                                 ?.copyWith(color: AppColors.primary),
                           ),
@@ -510,7 +498,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.surfaceVariant,
+                        color: AppColors.accent.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
@@ -519,7 +507,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           fontFamily: AppFontConfig.fontFamily,
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
-                          color: AppColors.secondary,
+                          color: AppColors.primary,
                         ),
                       ),
                     ),
@@ -545,21 +533,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             vertical: 14,
                           ),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(16),
                             borderSide: const BorderSide(
                               color: AppColors.outline,
                             ),
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(16),
                             borderSide: const BorderSide(
                               color: AppColors.outline,
                             ),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(16),
                             borderSide: const BorderSide(
                               color: AppColors.primary,
+                              width: 1.5,
                             ),
                           ),
                         ),
@@ -572,13 +561,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       label: const Text('Filters'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.primary,
-                        side: const BorderSide(color: AppColors.primary),
+                        backgroundColor: AppColors.surface,
+                        side: const BorderSide(color: AppColors.outline),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 16,
                         ),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(16),
                         ),
                       ),
                     ),

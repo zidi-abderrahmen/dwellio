@@ -125,58 +125,61 @@ class _AppNavigationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      decoration: BoxDecoration(
         color: AppColors.surface,
-        border: Border(
-          top: BorderSide(width: 1, color: AppColors.outlineVariant),
-        ),
-        boxShadow: [
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.outlineVariant),
+        boxShadow: const [
           BoxShadow(
-            color: Color.fromRGBO(0, 0, 0, 0.08),
-            offset: Offset(0, -2),
-            blurRadius: 4,
+            color: Color(0x120C3448),
+            offset: Offset(0, 8),
+            blurRadius: 24,
           ),
         ],
       ),
-      child: NavigationBarTheme(
-        data: NavigationBarThemeData(
-          height: 72,
-          elevation: 0,
-          backgroundColor: AppColors.surface,
-          surfaceTintColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          indicatorColor: AppColors.primary.withValues(alpha: 0.12),
-          indicatorShape: const StadiumBorder(),
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          iconTheme: WidgetStateProperty.resolveWith((states) {
-            final selected = states.contains(WidgetState.selected);
-            return IconThemeData(
-              size: 24,
-              color: selected ? AppColors.primary : AppColors.secondary,
-            );
-          }),
-          labelTextStyle: WidgetStateProperty.resolveWith((states) {
-            final selected = states.contains(WidgetState.selected);
-            return _labelStyle.copyWith(
-              color: selected ? AppColors.primary : AppColors.secondary,
-            );
-          }),
-        ),
-        child: NavigationBar(
-          selectedIndex: selectedIndex,
-          onDestinationSelected: onSelected,
-          destinations: [
-            for (var i = 0; i < _tabItems.length; i++)
-              if (i == _addTabIndex)
-                _buildAddDestination(_tabItems[i])
-              else
-                NavigationDestination(
-                  icon: Icon(_tabItems[i].icon),
-                  selectedIcon: Icon(_tabItems[i].selectedIcon),
-                  label: _tabItems[i].label,
-                ),
-          ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: NavigationBarTheme(
+          data: NavigationBarThemeData(
+            height: 72,
+            elevation: 0,
+            backgroundColor: AppColors.surface,
+            surfaceTintColor: Colors.transparent,
+            shadowColor: Colors.transparent,
+            indicatorColor: AppColors.accent.withValues(alpha: 0.12),
+            indicatorShape: const StadiumBorder(),
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+            iconTheme: WidgetStateProperty.resolveWith((states) {
+              final selected = states.contains(WidgetState.selected);
+              return IconThemeData(
+                size: 24,
+                color: selected ? AppColors.primary : AppColors.secondary,
+              );
+            }),
+            labelTextStyle: WidgetStateProperty.resolveWith((states) {
+              final selected = states.contains(WidgetState.selected);
+              return _labelStyle.copyWith(
+                color: selected ? AppColors.primary : AppColors.secondary,
+              );
+            }),
+          ),
+          child: NavigationBar(
+            selectedIndex: selectedIndex,
+            onDestinationSelected: onSelected,
+            destinations: [
+              for (var i = 0; i < _tabItems.length; i++)
+                if (i == _addTabIndex)
+                  _buildAddDestination(_tabItems[i])
+                else
+                  NavigationDestination(
+                    icon: Icon(_tabItems[i].icon),
+                    selectedIcon: Icon(_tabItems[i].selectedIcon),
+                    label: _tabItems[i].label,
+                  ),
+            ],
+          ),
         ),
       ),
     );
@@ -201,12 +204,12 @@ class _AddPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 64,
-      height: 32,
+      width: 52,
+      height: 40,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: AppColors.primary,
-        borderRadius: BorderRadius.circular(999),
+        color: AppColors.accent,
+        borderRadius: BorderRadius.circular(15),
       ),
       child: const Icon(Icons.add, size: 24, color: AppColors.onPrimary),
     );

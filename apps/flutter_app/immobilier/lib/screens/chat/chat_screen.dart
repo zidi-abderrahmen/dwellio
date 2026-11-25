@@ -217,11 +217,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Widget _buildReadError() {
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: AppColors.error.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         children: [
@@ -249,7 +249,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

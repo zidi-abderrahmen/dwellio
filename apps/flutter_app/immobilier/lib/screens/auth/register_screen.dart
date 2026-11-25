@@ -44,7 +44,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     setState(() => _loading = true);
 
     try {
-      final res = await ref.read(authServiceProvider).signUp(
+      final res = await ref
+          .read(authServiceProvider)
+          .signUp(
             fullName: _nameController.text,
             email: _emailController.text,
             password: _passwordController.text,
@@ -53,9 +55,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       if (!mounted) return;
 
       if (res.session == null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Account created. Check your email to confirm.'),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Account created. Check your email to confirm.'),
+          ),
+        );
         context.go(AppRoutes.loginLocation(from: widget.from));
       }
     } on AuthFailure catch (e) {
@@ -81,7 +85,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         children: [
           const AuthHeader(
             title: 'Create an account',
-            subtitle: 'Join Immobilier in a few seconds',
+            subtitle: 'Join Dwellio in a few seconds',
           ),
           const SizedBox(height: 24),
           AuthCard(
@@ -164,9 +168,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             actionLabel: 'Sign in',
             onPressed: _loading
                 ? null
-                : () => context.go(
-                      AppRoutes.loginLocation(from: widget.from),
-                    ),
+                : () => context.go(AppRoutes.loginLocation(from: widget.from)),
           ),
         ],
       ),
