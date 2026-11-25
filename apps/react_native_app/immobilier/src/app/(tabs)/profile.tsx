@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ComponentProps } from 'react';
+import React, { useCallback, useEffect, useState, type ComponentProps } from 'react';
 import {
   Image,
   Keyboard,
@@ -14,6 +14,8 @@ import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { File } from 'expo-file-system';
+
 import {
   ActivityIndicator,
   Button,
@@ -27,8 +29,18 @@ import {
   useTheme,
 } from 'react-native-paper';
 
-import { AuthFailure, getCurrentUser, signOut, updatePassword } from '../../services/authService';
-import { ProfileFailure, profileService } from '../../services/profileService';
+import {
+  AuthFailure,
+  getCurrentUser,
+  signOut,
+  updatePassword,
+} from '../../services/authService';
+
+import { supabase } from '../../lib/supabase';
+import {
+  ProfileFailure,
+  profileService,
+} from '../../services/profileService';
 
 type MaterialIconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -44,6 +56,7 @@ type FormErrors = {
 export default function ProfileScreen() {
   const router = useRouter();
   const theme = useTheme();
+  const colors = theme.colors;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -59,7 +72,6 @@ export default function ProfileScreen() {
   const [bio, setBio] = useState('');
   const [password, setPassword] = useState('');
 
-  // Last saved values, shown in view mode and restored on cancel.
   const [savedFullName, setSavedFullName] = useState('');
   const [savedPhone, setSavedPhone] = useState('');
   const [savedBio, setSavedBio] = useState('');
@@ -71,22 +83,23 @@ export default function ProfileScreen() {
     setSnackbarMessage(message);
   }, []);
 
-  // --------------------------------------------------
-  // Data
-  // --------------------------------------------------
+  // -----------------------------------------------
+  // Load profile
+  // -----------------------------------------------
 
   useEffect(() => {
     let cancelled = false;
 
     const loadProfile = async () => {
       try {
-        // Email still comes from Supabase Auth.
         const user = await getCurrentUser();
+
         if (cancelled) return;
+
         setEmail(user?.email ?? null);
 
-        // Profile information comes from public.profiles.
         const profile = await profileService.getMyProfile();
+
         if (cancelled) return;
 
         setSavedFullName(profile.fullName);
@@ -123,6 +136,10 @@ export default function ProfileScreen() {
     };
   }, [showMessage]);
 
+  // -----------------------------------------------
+  // Form actions
+  // -----------------------------------------------
+
   const resetFields = () => {
     setFullName(savedFullName);
     setPhone(savedPhone);
@@ -131,17 +148,8 @@ export default function ProfileScreen() {
     setFormErrors({});
   };
 
-  // TODO(upload): upload the selected image to Supabase Storage and return its public URL.
-  // Until the image uploader service exists, the current avatar URL is kept.
-  const uploadAvatar = async (_image: PickedImage): Promise<string> => {
-    return avatarUrl ?? '';
-  };
-
-  // --------------------------------------------------
-  // Actions
-  // --------------------------------------------------
-
   const startEditing = () => {
+    resetFields();
     setIsEditing(true);
   };
 
@@ -153,6 +161,10 @@ export default function ProfileScreen() {
     setIsEditing(false);
   };
 
+  // -----------------------------------------------
+  // Avatar
+  // -----------------------------------------------
+
   const pickAvatar = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -163,6 +175,7 @@ export default function ProfileScreen() {
       if (result.canceled || !result.assets[0]) return;
 
       const asset = result.assets[0];
+
       const optimizedImage = await ImageManipulator.manipulateAsync(
         asset.uri,
         [{ resize: { width: 1024, height: 1024 } }],
@@ -178,6 +191,57 @@ export default function ProfileScreen() {
     }
   };
 
+  const uploadAvatar = async (image: PickedImage): Promise<string> => {
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+
+  if (sessionError || !session?.user) {
+    throw new Error('You must be signed in to upload a photo.');
+  }
+
+  const userId = session.user.id;
+  const fileName = `${Date.now()}.jpg`;
+  const filePath = `${userId}/${fileName}`;
+
+  // 1. Read the image bytes
+  const bytes = await readImageBytes(image.uri);
+
+  if (bytes.byteLength === 0) {
+    throw new Error(
+      'The selected image appears to be empty. Please try another photo.',
+    );
+  }
+
+  // 2. Upload to Supabase Storage
+  const { error: uploadError } = await supabase.storage
+    .from('avatars')
+    .upload(filePath, bytes, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: 'image/jpeg',
+    });
+
+  if (uploadError) {
+    console.error('[avatar upload]', uploadError);
+    throw new Error(formatStorageUploadError(uploadError.message));
+  }
+
+  // 3. Clean up the previous avatar (best-effort, non-blocking)
+  if (avatarUrl) {
+    void deletePreviousAvatar(avatarUrl);
+  }
+
+  // 4. Return the new public URL
+  const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+  return data.publicUrl;
+};
+
+  // -----------------------------------------------
+  // Validation
+  // -----------------------------------------------
+
   const validateForm = (): boolean => {
     const nextErrors: FormErrors = {};
 
@@ -190,8 +254,13 @@ export default function ProfileScreen() {
     }
 
     setFormErrors(nextErrors);
+
     return Object.keys(nextErrors).length === 0;
   };
+
+  // -----------------------------------------------
+  // Save profile
+  // -----------------------------------------------
 
   const saveProfile = async () => {
     if (!validateForm()) return;
@@ -202,14 +271,14 @@ export default function ProfileScreen() {
     const newPassword = password;
 
     try {
-      // Upload the new avatar first, if one was picked.
       let nextAvatarUrl = avatarUrl ?? '';
+
       const image = pickedImage;
+
       if (image !== null) {
         nextAvatarUrl = await uploadAvatar(image);
       }
 
-      // Update profile information in public.profiles.
       await profileService.updateMyProfile({
         fullName,
         phone,
@@ -217,7 +286,6 @@ export default function ProfileScreen() {
         bio,
       });
 
-      // Update the password in Supabase Auth only if provided.
       if (newPassword.length > 0) {
         await updatePassword(newPassword);
       }
@@ -225,7 +293,11 @@ export default function ProfileScreen() {
       setSavedFullName(fullName);
       setSavedPhone(phone);
       setSavedBio(bio);
-      setAvatarUrl(nextAvatarUrl.length === 0 ? null : nextAvatarUrl);
+
+      setAvatarUrl(
+        nextAvatarUrl.length === 0 ? null : nextAvatarUrl,
+      );
+
       setPickedImage(null);
       setPassword('');
       setObscurePassword(true);
@@ -243,6 +315,8 @@ export default function ProfileScreen() {
         error instanceof Error
       ) {
         showMessage(error.message);
+      } else if (error instanceof Error) {
+        showMessage(error.message);
       } else {
         showMessage('Something went wrong. Please try again.');
       }
@@ -251,9 +325,12 @@ export default function ProfileScreen() {
     }
   };
 
+  // -----------------------------------------------
+  // Sign out
+  // -----------------------------------------------
+
   const handleSignOut = async () => {
     try {
-      // Navigate to Home before signing out, as in the Flutter screen.
       router.replace('/');
       await signOut();
     } catch (error) {
@@ -263,9 +340,9 @@ export default function ProfileScreen() {
     }
   };
 
-  // --------------------------------------------------
-  // Header (avatar, name, email)
-  // --------------------------------------------------
+  // -----------------------------------------------
+  // Profile information
+  // -----------------------------------------------
 
   const imageSource = pickedImage
     ? { uri: pickedImage.uri }
@@ -277,21 +354,32 @@ export default function ProfileScreen() {
     ? 'Your profile'
     : savedFullName.trim();
 
+  const initials = displayName
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part.charAt(0).toUpperCase())
+    .join('');
+
+  // -----------------------------------------------
+  // Avatar component
+  // -----------------------------------------------
+
   const renderAvatar = () => {
     const avatar = (
       <View
         style={[
           styles.avatarOuter,
           {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.outline,
+            backgroundColor: colors.surface,
+            borderColor: colors.outlineVariant,
           },
         ]}
       >
         <View
           style={[
             styles.avatarInner,
-            { backgroundColor: theme.colors.outlineVariant },
+            { backgroundColor: colors.secondaryContainer },
           ]}
         >
           {imageSource ? (
@@ -299,14 +387,11 @@ export default function ProfileScreen() {
               source={imageSource}
               style={styles.avatarImage}
               resizeMode="cover"
-              onError={() => undefined}
             />
           ) : (
-            <MaterialCommunityIcons
-              name="account"
-              size={48}
-              color={theme.colors.outline}
-            />
+            <Text style={[styles.avatarInitials, { color: colors.onSecondaryContainer }]}>
+              {initials || 'U'}
+            </Text>
           )}
         </View>
       </View>
@@ -323,101 +408,254 @@ export default function ProfileScreen() {
         style={styles.avatarPressable}
       >
         {avatar}
+
         <View
           style={[
             styles.cameraBadge,
             {
-              backgroundColor: theme.colors.primary,
-              borderColor: theme.colors.surface,
+              backgroundColor: colors.primary,
+              borderColor: colors.surface,
             },
           ]}
         >
           <MaterialCommunityIcons
             name="camera-outline"
             size={18}
-            color={theme.colors.onPrimary}
+            color={colors.onPrimary}
           />
         </View>
       </Pressable>
     );
   };
 
+  // -----------------------------------------------
+  // Profile header
+  // -----------------------------------------------
+
   const renderHeader = () => (
     <View style={styles.profileHeader}>
       {renderAvatar()}
+
+      {isEditing && (
+        <Text style={[styles.changePhotoText, { color: colors.primary }]}>
+          Tap to change photo
+        </Text>
+      )}
+
       <Text
         variant="headlineSmall"
         numberOfLines={1}
-        style={[styles.profileName, { color: theme.colors.onBackground }]}
+        style={[styles.profileName, { color: colors.onBackground }]}
       >
         {displayName}
       </Text>
-      {email !== null ? (
+
+      {email !== null && (
         <Text
           variant="bodyMedium"
           numberOfLines={1}
-          style={[styles.profileEmail, { color: theme.colors.secondary }]}
+          style={[styles.profileEmail, { color: colors.onSurfaceVariant }]}
         >
           {email}
         </Text>
-      ) : null}
+      )}
+
+      <View
+        style={[
+          styles.memberBadge,
+          { backgroundColor: colors.secondaryContainer },
+        ]}
+      >
+        <MaterialCommunityIcons
+          name="check-decagram-outline"
+          size={15}
+          color={colors.onSecondaryContainer}
+        />
+
+        <Text style={[styles.memberBadgeText, { color: colors.onSecondaryContainer }]}>
+          Dwellio member
+        </Text>
+      </View>
     </View>
   );
 
-  // --------------------------------------------------
-  // View mode
-  // --------------------------------------------------
+  // -----------------------------------------------
+  // Section title
+  // -----------------------------------------------
+
+  const SectionTitle = ({
+    title,
+    subtitle,
+    icon,
+  }: {
+    title: string;
+    subtitle: string;
+    icon: MaterialIconName;
+  }) => (
+    <View style={styles.sectionTitleContainer}>
+      <View
+        style={[
+          styles.sectionIcon,
+          { backgroundColor: colors.secondaryContainer },
+        ]}
+      >
+        <MaterialCommunityIcons
+          name={icon}
+          size={20}
+          color={colors.onSecondaryContainer}
+        />
+      </View>
+
+      <View style={styles.sectionTitleText}>
+        <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>
+          {title}
+        </Text>
+
+        <Text style={[styles.sectionSubtitle, { color: colors.onSurfaceVariant }]}>
+          {subtitle}
+        </Text>
+      </View>
+    </View>
+  );
+
+  // -----------------------------------------------
+  // Information rows
+  // -----------------------------------------------
 
   const renderViewContent = () => (
     <View>
-      <InfoRow icon="email-outline" label="Email" value={email ?? ''} />
-      <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
-      <InfoRow icon="account-outline" label="Full name" value={savedFullName} />
-      <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
-      <InfoRow icon="phone-outline" label="Phone" value={savedPhone} />
-      <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
-      <InfoRow icon="text-box-edit-outline" label="Bio" value={savedBio} />
-      <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
-      <Button
-        accessibilityLabel="View my listings"
+      <SectionTitle
+        title="Personal information"
+        subtitle="Your account details"
+        icon="account-circle-outline"
+      />
+
+      <View style={styles.infoList}>
+        <InfoRow
+          icon="email-outline"
+          label="Email address"
+          value={email ?? ''}
+        />
+
+        <Divider style={{ backgroundColor: colors.outlineVariant }} />
+
+        <InfoRow
+          icon="account-outline"
+          label="Full name"
+          value={savedFullName}
+        />
+
+        <Divider style={{ backgroundColor: colors.outlineVariant }} />
+
+        <InfoRow
+          icon="phone-outline"
+          label="Phone number"
+          value={savedPhone}
+        />
+
+        <Divider style={{ backgroundColor: colors.outlineVariant }} />
+
+        <InfoRow
+          icon="text-box-edit-outline"
+          label="About me"
+          value={savedBio}
+        />
+      </View>
+
+      <Divider style={styles.sectionDivider} />
+
+      <SectionTitle
+        title="My properties"
+        subtitle="Manage your published listings"
         icon="home-city-outline"
-        mode="outlined"
+      />
+
+      <Pressable
+        accessibilityRole="button"
         onPress={() => router.push('/my-listings')}
-        style={styles.myListingsButton}
+        style={({ pressed }) => [
+          styles.listingsCard,
+          {
+            backgroundColor: colors.secondaryContainer,
+            opacity: pressed ? 0.8 : 1,
+          },
+        ]}
       >
-        My Listings
-      </Button>
+        <View
+          style={[
+            styles.listingsIcon,
+            { backgroundColor: colors.surface },
+          ]}
+        >
+          <MaterialCommunityIcons
+            name="home-city"
+            size={25}
+            color={colors.primary}
+          />
+        </View>
+
+        <View style={styles.listingsText}>
+          <Text style={[styles.listingsTitle, { color: colors.onSecondaryContainer }]}>
+            My Listings
+          </Text>
+
+          <Text style={[styles.listingsSubtitle, { color: colors.onSurfaceVariant }]}>
+            View and manage your properties
+          </Text>
+        </View>
+
+        <MaterialCommunityIcons
+          name="chevron-right"
+          size={25}
+          color={colors.onSecondaryContainer}
+        />
+      </Pressable>
     </View>
   );
 
-  // --------------------------------------------------
-  // Edit mode
-  // --------------------------------------------------
+  // -----------------------------------------------
+  // Edit form
+  // -----------------------------------------------
 
   const renderEditContent = () => (
     <View>
-      {/* Email: always read-only. */}
+      <SectionTitle
+        title="Personal information"
+        subtitle="Update your profile details"
+        icon="account-edit-outline"
+      />
+
+      {/* Email */}
       <TextInput
         mode="outlined"
-        label="Email"
+        label="Email address"
         value={email ?? ''}
         editable={false}
         left={<TextInput.Icon icon="email-outline" />}
         right={<TextInput.Icon icon="lock-outline" />}
         style={styles.input}
-        outlineColor={theme.colors.outline}
-        activeOutlineColor={theme.colors.outline}
-        disabled={false}
+        outlineStyle={styles.inputOutline}
       />
+
       <HelperText type="info" visible style={styles.helperText}>
-        Email cannot be changed.
+        Your email address cannot be changed.
       </HelperText>
 
+      {/* Full name */}
       <TextInput
         mode="outlined"
         label="Full name"
+        placeholder="Enter your full name"
         value={fullName}
-        onChangeText={setFullName}
+        onChangeText={value => {
+          setFullName(value);
+          if (formErrors.fullName) {
+            setFormErrors(previous => ({
+              ...previous,
+              fullName: undefined,
+            }));
+          }
+        }}
         editable={!saving}
         autoCapitalize="words"
         autoComplete="name"
@@ -425,14 +663,18 @@ export default function ProfileScreen() {
         left={<TextInput.Icon icon="account-outline" />}
         error={Boolean(formErrors.fullName)}
         style={styles.input}
+        outlineStyle={styles.inputOutline}
       />
+
       <HelperText type="error" visible={Boolean(formErrors.fullName)}>
         {formErrors.fullName}
       </HelperText>
 
+      {/* Phone */}
       <TextInput
         mode="outlined"
-        label="Phone"
+        label="Phone number"
+        placeholder="Enter your phone number"
         value={phone}
         onChangeText={setPhone}
         editable={!saving}
@@ -441,49 +683,84 @@ export default function ProfileScreen() {
         returnKeyType="next"
         left={<TextInput.Icon icon="phone-outline" />}
         style={styles.input}
+        outlineStyle={styles.inputOutline}
       />
 
+      {/* Bio */}
       <TextInput
         mode="outlined"
-        label="Bio"
+        label="About me"
+        placeholder="Tell us something about yourself..."
         value={bio}
         onChangeText={setBio}
         editable={!saving}
         multiline
-        numberOfLines={5}
+        numberOfLines={4}
         textAlignVertical="top"
         autoCapitalize="sentences"
-        left={<TextInput.Icon icon="text-box-edit-outline" />}
         style={[styles.input, styles.bioInput]}
+        outlineStyle={styles.inputOutline}
+      />
+
+      <Text style={[styles.fieldHint, { color: colors.onSurfaceVariant }]}>
+        A short description helps other users know you better.
+      </Text>
+
+      <Divider style={styles.sectionDivider} />
+
+      {/* Security */}
+      <SectionTitle
+        title="Account security"
+        subtitle="Change your password"
+        icon="shield-lock-outline"
       />
 
       <TextInput
         mode="outlined"
-        label="New password (optional)"
+        label="New password"
+        placeholder="Enter a new password"
         value={password}
-        onChangeText={setPassword}
+        onChangeText={value => {
+          setPassword(value);
+
+          if (formErrors.password) {
+            setFormErrors(previous => ({
+              ...previous,
+              password: undefined,
+            }));
+          }
+        }}
         editable={!saving}
         secureTextEntry={obscurePassword}
         autoComplete="new-password"
+        autoCapitalize="none"
         returnKeyType="done"
         left={<TextInput.Icon icon="lock-outline" />}
         right={
           <TextInput.Icon
             icon={obscurePassword ? 'eye-outline' : 'eye-off-outline'}
-            onPress={() => setObscurePassword((current) => !current)}
+            onPress={() => setObscurePassword(current => !current)}
+            accessibilityLabel={obscurePassword ? 'Show password' : 'Hide password'}
           />
         }
         error={Boolean(formErrors.password)}
         style={styles.input}
+        outlineStyle={styles.inputOutline}
       />
+
       <HelperText type="info" visible style={styles.helperText}>
         Leave blank to keep your current password.
       </HelperText>
+
       <HelperText type="error" visible={Boolean(formErrors.password)}>
         {formErrors.password}
       </HelperText>
     </View>
   );
+
+  // -----------------------------------------------
+  // Edit actions
+  // -----------------------------------------------
 
   const renderEditActions = () => (
     <View style={styles.editActions}>
@@ -491,18 +768,20 @@ export default function ProfileScreen() {
         mode="outlined"
         onPress={cancelEditing}
         disabled={saving}
-        style={styles.actionButton}
+        style={styles.cancelButton}
         contentStyle={styles.actionButtonContent}
-        textColor={theme.colors.secondary}
+        textColor={colors.onSurface}
       >
         Cancel
       </Button>
+
       <Button
         mode="contained"
         onPress={saveProfile}
         loading={saving}
         disabled={saving}
-        style={styles.actionButton}
+        icon="check"
+        style={styles.saveButton}
         contentStyle={styles.actionButtonContent}
       >
         Save changes
@@ -510,42 +789,69 @@ export default function ProfileScreen() {
     </View>
   );
 
+  // -----------------------------------------------
+  // Main screen
+  // -----------------------------------------------
+
   return (
     <SafeAreaView
       edges={['top', 'left', 'right']}
-      style={[styles.screen, { backgroundColor: theme.colors.background }]}
+      style={[
+        styles.screen,
+        { backgroundColor: colors.background },
+      ]}
     >
+      {/* App bar */}
       <View style={styles.appBar}>
-        <Text
-          variant="titleLarge"
-          style={{ color: theme.colors.onBackground }}
-        >
-          Profile
-        </Text>
+        <View>
+          <Text style={[styles.appBarTitle, { color: colors.onBackground }]}>
+            My Profile
+          </Text>
 
-        {!isEditing ? (
+          <Text style={[styles.appBarSubtitle, { color: colors.onSurfaceVariant }]}>
+            Manage your account
+          </Text>
+        </View>
+
+        {!isEditing && !loading && (
           <View style={styles.appBarActions}>
             <IconButton
               icon="pencil-outline"
+              mode="contained-tonal"
               accessibilityLabel="Edit profile"
-              disabled={loading}
               onPress={startEditing}
-              iconColor={theme.colors.onSurface}
+              iconColor={colors.primary}
             />
+
             <IconButton
               icon="logout"
+              mode="contained-tonal"
               accessibilityLabel="Log out"
-              disabled={loading}
               onPress={handleSignOut}
-              iconColor={theme.colors.onSurface}
+              iconColor={colors.error}
             />
           </View>
-        ) : null}
+        )}
+
+        {isEditing && (
+          <IconButton
+            icon="close"
+            mode="contained-tonal"
+            accessibilityLabel="Cancel editing"
+            disabled={saving}
+            onPress={cancelEditing}
+          />
+        )}
       </View>
 
+      {/* Loading */}
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
+
+          <Text style={[styles.loadingText, { color: colors.onSurfaceVariant }]}>
+            Loading your profile...
+          </Text>
         </View>
       ) : (
         <KeyboardAvoidingView
@@ -555,6 +861,7 @@ export default function ProfileScreen() {
           <ScrollView
             keyboardDismissMode="on-drag"
             keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
           >
             {renderHeader()}
@@ -563,15 +870,39 @@ export default function ProfileScreen() {
               mode="elevated"
               style={[
                 styles.profileCard,
-                { backgroundColor: theme.colors.surface },
+                { backgroundColor: colors.surface },
               ]}
             >
-              <Card.Content>
-                {isEditing ? renderEditContent() : renderViewContent()}
+              <Card.Content style={styles.cardContent}>
+                {isEditing
+                  ? renderEditContent()
+                  : renderViewContent()}
               </Card.Content>
             </Card>
 
-            {isEditing ? renderEditActions() : null}
+            {isEditing && renderEditActions()}
+
+            {!isEditing && (
+              <Pressable
+                accessibilityRole="button"
+                onPress={handleSignOut}
+                style={styles.logoutLink}
+              >
+                <MaterialCommunityIcons
+                  name="logout"
+                  size={19}
+                  color={colors.error}
+                />
+
+                <Text style={[styles.logoutText, { color: colors.error }]}>
+                  Sign out of your account
+                </Text>
+              </Pressable>
+            )}
+
+            <Text style={[styles.footerText, { color: colors.onSurfaceVariant }]}>
+              FIND YOUR PLACE. MAKE IT HOME.
+            </Text>
           </ScrollView>
         </KeyboardAvoidingView>
       )}
@@ -580,12 +911,20 @@ export default function ProfileScreen() {
         visible={snackbarMessage !== null}
         onDismiss={() => setSnackbarMessage(null)}
         duration={4000}
+        action={{
+          label: 'OK',
+          onPress: () => setSnackbarMessage(null),
+        }}
       >
         {snackbarMessage ?? ''}
       </Snackbar>
     </SafeAreaView>
   );
 }
+
+// -----------------------------------------------
+// Reusable information row
+// -----------------------------------------------
 
 type InfoRowProps = {
   icon: MaterialIconName;
@@ -595,25 +934,34 @@ type InfoRowProps = {
 
 function InfoRow({ icon, label, value }: InfoRowProps) {
   const theme = useTheme();
+  const colors = theme.colors;
   const hasValue = value.trim().length > 0;
 
   return (
     <View style={styles.infoRow}>
-      <MaterialCommunityIcons
-        name={icon}
-        size={24}
-        color={theme.colors.secondary}
-        style={styles.infoIcon}
-      />
+      <View
+        style={[
+          styles.infoIconContainer,
+          { backgroundColor: colors.secondaryContainer },
+        ]}
+      >
+        <MaterialCommunityIcons
+          name={icon}
+          size={20}
+          color={colors.onSecondaryContainer}
+        />
+      </View>
+
       <View style={styles.infoTextContainer}>
-        <Text variant="labelMedium" style={{ color: theme.colors.secondary }}>
+        <Text style={[styles.infoLabel, { color: colors.onSurfaceVariant }]}>
           {label}
         </Text>
+
         <Text
-          variant="bodyLarge"
-          style={{
-            color: hasValue ? theme.colors.onSurface : theme.colors.outline,
-          }}
+          style={[
+            styles.infoValue,
+            { color: hasValue ? colors.onSurface : colors.outline },
+          ]}
         >
           {hasValue ? value.trim() : 'Not provided'}
         </Text>
@@ -622,89 +970,165 @@ function InfoRow({ icon, label, value }: InfoRowProps) {
   );
 }
 
+// -----------------------------------------------
+// Storage helpers
+// -----------------------------------------------
+
+async function readImageBytes(uri: string): Promise<Uint8Array> {
+  // Primary: new SDK 54 File API — returns Uint8Array directly.
+  try {
+    const file = new File(uri);
+    return await file.bytes();
+  } catch (fileError) {
+    console.warn('[avatar] File.bytes() failed, falling back to fetch', fileError);
+  }
+
+  // Fallback: fetch(file://…) — works natively in modern Expo.
+  try {
+    const response = await fetch(uri);
+    if (response.ok) {
+      return new Uint8Array(await response.arrayBuffer());
+    }
+  } catch (fetchError) {
+    console.warn('[avatar] fetch(uri) failed too', fetchError);
+  }
+
+  throw new Error(
+    'Could not read the selected image. Please pick a different photo.',
+  );
+}
+
+function formatStorageUploadError(rawMessage: string): string {
+  const message = rawMessage.toLowerCase();
+
+  if (message.includes('row-level security') || message.includes('policy')) {
+    return 'Upload was blocked by the storage bucket permissions. Please check the "avatars" bucket policies.';
+  }
+  if (message.includes('bucket') && message.includes('not found')) {
+    return 'The "avatars" storage bucket could not be found. Please create it in your Supabase dashboard.';
+  }
+  if (message.includes('payload') || message.includes('too large')) {
+    return 'The image is too large to upload. Please try a smaller photo.';
+  }
+  if (message.includes('mime') || message.includes('content type')) {
+    return 'This image format is not supported. Please use a JPEG or PNG photo.';
+  }
+
+  return rawMessage;
+}
+
+async function deletePreviousAvatar(publicUrl: string) {
+  const marker = '/storage/v1/object/public/avatars/';
+  const index = publicUrl.indexOf(marker);
+  if (index === -1) return;
+
+  const objectPath = decodeURIComponent(publicUrl.slice(index + marker.length));
+
+  try {
+    await supabase.storage.from('avatars').remove([objectPath]);
+  } catch {
+    // Non-critical — the new avatar is already uploaded
+  }
+}
+
+// -----------------------------------------------
+// Styles
+// -----------------------------------------------
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
   },
+
   appBar: {
-    minHeight: 56,
-    paddingLeft: 16,
-    paddingRight: 4,
+    minHeight: 72,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+
+  appBarTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: -0.5,
+  },
+
+  appBarSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+
   appBarActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 2,
   },
+
   content: {
     flex: 1,
   },
+
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 14,
   },
+
+  loadingText: {
+    fontSize: 13,
+  },
+
   scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 32,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 36,
   },
+
   profileHeader: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 28,
   },
-  profileCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  myListingsButton: {
-    marginTop: 16,
-  },
-  profileName: {
-    maxWidth: '100%',
-    marginTop: 16,
-    fontSize: 22,
-    lineHeight: 28,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  profileEmail: {
-    maxWidth: '100%',
-    marginTop: 4,
-    fontSize: 14,
-    lineHeight: 20,
-    letterSpacing: 0.25,
-    textAlign: 'center',
-  },
+
   avatarPressable: {
-    width: 104,
-    height: 104,
+    width: 116,
+    height: 116,
   },
+
   avatarOuter: {
-    width: 104,
-    height: 104,
-    padding: 4,
-    borderRadius: 52,
+    width: 116,
+    height: 116,
+    padding: 5,
+    borderRadius: 58,
     borderWidth: 1,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    elevation: 3,
   },
+
   avatarInner: {
     flex: 1,
-    borderRadius: 48,
+    borderRadius: 54,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   avatarImage: {
     width: '100%',
     height: '100%',
   },
+
+  avatarInitials: {
+    fontSize: 34,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+
   cameraBadge: {
     position: 'absolute',
     right: 0,
@@ -712,45 +1136,229 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    borderWidth: 2,
+    borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+  changePhotoText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 9,
+  },
+
+  profileName: {
+    maxWidth: '100%',
+    marginTop: 15,
+    fontSize: 23,
+    lineHeight: 30,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+
+  profileEmail: {
+    maxWidth: '100%',
+    marginTop: 5,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+
+  memberBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    marginTop: 13,
+  },
+
+  memberBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+
+  profileCard: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    elevation: 2,
+  },
+
+  cardContent: {
+    padding: 18,
+  },
+
+  sectionTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+    gap: 12,
+  },
+
+  sectionIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  sectionTitleText: {
+    flex: 1,
+    gap: 3,
+  },
+
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  sectionSubtitle: {
+    fontSize: 11,
+  },
+
+  infoList: {
+    marginBottom: 6,
+  },
+
   infoRow: {
-    minHeight: 72,
+    minHeight: 76,
     paddingVertical: 12,
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    gap: 13,
   },
-  infoIcon: {
-    marginRight: 16,
-    marginTop: 2,
+
+  infoIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+
   infoTextContainer: {
     flex: 1,
-    paddingTop: 2,
-    gap: 2,
+    gap: 5,
   },
+
+  infoLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+
+  infoValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+
+  sectionDivider: {
+    marginVertical: 22,
+  },
+
+  listingsCard: {
+    minHeight: 82,
+    borderRadius: 15,
+    padding: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  listingsIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  listingsText: {
+    flex: 1,
+    gap: 5,
+  },
+
+  listingsTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  listingsSubtitle: {
+    fontSize: 11,
+  },
+
   input: {
-    marginTop: 4,
+    marginTop: 7,
     backgroundColor: 'transparent',
+    fontSize: 14,
   },
+
+  inputOutline: {
+    borderRadius: 13,
+  },
+
   bioInput: {
-    minHeight: 112,
+    minHeight: 115,
   },
+
+  fieldHint: {
+    fontSize: 11,
+    marginTop: 4,
+    marginBottom: 10,
+    marginLeft: 4,
+  },
+
   helperText: {
-    marginBottom: 4,
+    marginBottom: 7,
   },
+
+  photoNoticeText: {
+    flex: 1,
+    fontSize: 11,
+    lineHeight: 17,
+  },
+
   editActions: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 24,
+    marginTop: 20,
   },
-  actionButton: {
-    flex: 1,
-    borderRadius: 12,
+
+  cancelButton: {
+    flex: 0.85,
+    borderRadius: 13,
   },
+
+  saveButton: {
+    flex: 1.4,
+    borderRadius: 13,
+  },
+
   actionButtonContent: {
-    minHeight: 48,
+    minHeight: 49,
+  },
+
+  logoutLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+    paddingVertical: 18,
+    marginTop: 12,
+  },
+
+  logoutText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  footerText: {
+    textAlign: 'center',
+    marginTop: 12,
+    fontSize: 9,
+    letterSpacing: 2,
+    fontWeight: '600',
+    opacity: 0.65,
   },
 });
