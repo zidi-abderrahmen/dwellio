@@ -74,6 +74,8 @@ class PropertyService {
     int? surfaceM2,
     int? rooms,
     required String city,
+    required double latitude,
+    required double longitude,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) {
@@ -93,6 +95,16 @@ class PropertyService {
     if (!price.isFinite || price < 0) {
       throw const PropertyCreationFailure('Enter a valid non-negative price.');
     }
+    if (!latitude.isFinite ||
+        latitude < -90 ||
+        latitude > 90 ||
+        !longitude.isFinite ||
+        longitude < -180 ||
+        longitude > 180) {
+      throw const PropertyCreationFailure(
+        'Select a valid location on the map.',
+      );
+    }
 
     final payload = {
       'owner_id': user.id,
@@ -107,6 +119,8 @@ class PropertyService {
       'surface_m2': surfaceM2,
       'rooms': rooms,
       'city': normalizedCity,
+      'latitude': latitude,
+      'longitude': longitude,
     };
 
     try {
@@ -351,6 +365,8 @@ class PropertyService {
     int? surfaceM2,
     int? rooms,
     required String city,
+    required double latitude,
+    required double longitude,
   }) async {
     final user = _client.auth.currentUser;
     if (user == null) {
@@ -370,6 +386,12 @@ class PropertyService {
         !price.isFinite ||
         price < 0 ||
         price >= 10000000000 ||
+        !latitude.isFinite ||
+        latitude < -90 ||
+        latitude > 90 ||
+        !longitude.isFinite ||
+        longitude < -180 ||
+        longitude > 180 ||
         (surfaceM2 != null && surfaceM2 <= 0) ||
         (rooms != null && rooms < 0)) {
       throw const PropertyUpdateFailure(
@@ -389,6 +411,8 @@ class PropertyService {
       'surface_m2': surfaceM2,
       'rooms': rooms,
       'city': normalizedCity,
+      'latitude': latitude,
+      'longitude': longitude,
     };
 
     try {
