@@ -25,7 +25,7 @@ void main() {
     expect(chatService.propertyId, 'property-1');
     expect(chatService.ownerId, 'owner');
     expect(find.byType(ChatScreen), findsOneWidget);
-    expect(find.text('Conversation ID: chat-1'), findsOneWidget);
+    expect(find.text('Start the conversation'), findsOneWidget);
   });
 
   testWidgets('hides contact action for the property owner', (tester) async {
@@ -93,8 +93,10 @@ Future<void> _pumpDetails(
       ),
       GoRoute(
         path: '/chats/:chatId',
-        builder: (context, state) =>
-            ChatScreen(chatId: state.pathParameters['chatId']!),
+        builder: (context, state) => ChatScreen(
+          chatId: state.pathParameters['chatId']!,
+          chatService: chatService,
+        ),
       ),
     ],
   );
@@ -158,6 +160,16 @@ class _FakeChatService implements ChatService {
 
   @override
   Future<List<ChatConversation>> getConversations() async => [];
+
+  @override
+  Future<void> sendMessage(String chatId, String content) async {}
+
+  @override
+  Future<void> markReceivedMessagesAsRead(String chatId) async {}
+
+  @override
+  Stream<List<Map<String, dynamic>>> getMessages(String chatId) =>
+      Stream.value(const []);
 }
 
 class _FakeFavoriteService implements FavoriteService {
