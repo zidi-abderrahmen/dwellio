@@ -1,84 +1,179 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
   View,
+  type ListRenderItemInfo,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { chatService } from '../../services/chatService';
 import { useAuthSession } from '../../context/AuthContext';
+import { useChatConversation } from '../../hooks/useChatConversation';
+import { buildChatListItems, type ChatListItem } from '../../lib/chatFormatters';
+import { ChatHeader } from '../../components/chats/ChatHeader';
+import { DateSeparator } from '../../components/chats/DateSeparator';
+import { MessageBubble } from '../../components/chats/MessageBubble';
+import { MessageInput } from '../../components/chats/MessageInput';
 import { theme, spacing, radius, typography } from '../../theme';
-import type { ChatWithRelations } from '../../types/chat';
 
 const colors = theme.colors;
+const LOAD_OLDER_THRESHOLD = 120;
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuthSession();
   const userId = session?.user?.id ?? null;
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
-  const [chat, setChat] = useState<ChatWithRelations | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const chatId = !id || Array.isArray(id) ? undefined : id;
 
-  const loadChat = useCallback(async () => {
-    if (!id || Array.isArray(id)) {
-      setLoadError('Invalid conversation.');
-      setLoading(false);
-      return;
-    }
-    if (!userId) {
-      setLoadError('You must be signed in to open a conversation.');
-      setLoading(false);
-      return;
-    }
+  const {
+    chat,
+    messages,
+    loading,
+    loadError,
+    sending,
+    sendError,
+    hasMore,
+    loadingOlder,
+    sendMessage,
+    retryMessage,
+    loadOlder,
+  } = useChatConversation(chatId, userId);
 
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const result = await chatService.getChatById(id);
-      if (!result) {
-        setLoadError('This conversation could not be found.');
-      } else {
-        setChat(result);
-      }
-    } catch (error) {
-      console.error('Failed to load conversation:', error);
-      setLoadError(
-        error instanceof Error
-          ? error.message
-          : 'Unable to open this conversation.',
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [id, userId]);
+  const [draft, setDraft] = useState('');
+  const flatListRef = useRef<FlatList<ChatListItem>>(null);
+  const isAtBottomRef = useRef(true);
+  const prevMessageCountRef = useRef(0);
+  const initialScrollDoneRef = useRef(false);
 
-  useEffect(() => {
-    void loadChat();
-  }, [loadChat]);
+  const listItems = useMemo(() => buildChatListItems(messages), [messages]);
+  const lastItemKey = listItems.length > 0 ? listItems[listItems.length - 1].key : null;
 
   const counterpart = useMemo(() => {
     if (!chat || !userId) return null;
     return userId === chat.buyer_id ? chat.owner : chat.buyer;
   }, [chat, userId]);
 
+  const displayName = counterpart?.full_name?.trim() || 'Conversation';
+  const propertyTitle = chat?.properties?.title ?? 'Untitled property';
+
+  // --------------------------------------------------
+  // Navigation
+  // --------------------------------------------------
   const handleBack = useCallback(() => {
     if (router.canGoBack()) router.back();
     else router.replace('/chats');
   }, [router]);
 
+  const handlePressProperty = useCallback(() => {
+    if (!chat) return;
+    router.push({
+      pathname: '/property/[id]',
+      params: { id: chat.property_id },
+    });
+  }, [chat, router]);
+
+  // --------------------------------------------------
+  // Send
+  // --------------------------------------------------
+  const handleSend = useCallback(async () => {
+    const text = draft.trim();
+    if (!text) return;
+    setDraft('');
+    Keyboard.dismiss();
+    try {
+      await sendMessage(text);
+    } catch {
+      // Failed state is surfaced in the bubble; user can tap to retry.
+    }
+  }, [draft, sendMessage]);
+
+  // --------------------------------------------------
+  // Scroll management
+  // --------------------------------------------------
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } =
+        event.nativeEvent;
+
+      // At-bottom check (with small tolerance).
+      isAtBottomRef.current =
+        contentOffset.y + layoutMeasurement.height >=
+        contentSize.height - 40;
+
+      // Fetch older messages when scrolled near the top.
+      if (
+        contentOffset.y < LOAD_OLDER_THRESHOLD &&
+        hasMore &&
+        !loadingOlder &&
+        messages.length > 0
+      ) {
+        void loadOlder();
+      }
+    },
+    [hasMore, loadingOlder, loadOlder, messages.length],
+  );
+
+  const handleContentSizeChange = useCallback(() => {
+    if (initialScrollDoneRef.current || messages.length === 0) return;
+    initialScrollDoneRef.current = true;
+    requestAnimationFrame(() => {
+      flatListRef.current?.scrollToEnd({ animated: false });
+    });
+  }, [messages.length]);
+
+  useEffect(() => {
+    if (!initialScrollDoneRef.current) {
+      prevMessageCountRef.current = messages.length;
+      return;
+    }
+
+    const grew = messages.length > prevMessageCountRef.current;
+    prevMessageCountRef.current = messages.length;
+
+    if (grew && isAtBottomRef.current) {
+      requestAnimationFrame(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      });
+    }
+  }, [messages.length]);
+
+  // --------------------------------------------------
+  // Item rendering
+  // --------------------------------------------------
+  const renderItem = useCallback(
+    ({ item }: ListRenderItemInfo<ChatListItem>) => {
+      if (item.type === 'date') {
+        return <DateSeparator label={item.label} />;
+      }
+      return (
+        <MessageBubble
+          message={item.message}
+          isOwn={item.message.sender_id === userId}
+          onRetry={retryMessage}
+        />
+      );
+    },
+    [userId, retryMessage],
+  );
+
+  // --------------------------------------------------
+  // State screens
+  // --------------------------------------------------
   if (loading) {
     return (
-      <SafeAreaView style={styles.stateScreen}>
+      <SafeAreaView style={styles.stateScreen} edges={['top', 'bottom']}>
         <StatusBar style="dark" />
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.stateText}>Loading conversation…</Text>
@@ -88,7 +183,7 @@ export default function ChatScreen() {
 
   if (loadError || !chat) {
     return (
-      <SafeAreaView style={styles.stateScreen}>
+      <SafeAreaView style={styles.stateScreen} edges={['top', 'bottom']}>
         <StatusBar style="dark" />
         <Ionicons name="alert-circle-outline" size={48} color={colors.error} />
         <Text style={styles.errorText}>
@@ -105,60 +200,74 @@ export default function ChatScreen() {
     );
   }
 
-  const displayName = counterpart?.full_name?.trim() || 'Conversation';
-
+  // --------------------------------------------------
+  // Main
+  // --------------------------------------------------
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="dark" />
 
-      <View style={styles.topBar}>
-        <Pressable
-          onPress={handleBack}
-          hitSlop={8}
-          style={styles.iconButton}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <Ionicons name="arrow-back" size={22} color={colors.onSurface} />
-        </Pressable>
+      <ChatHeader
+        displayName={displayName}
+        propertyTitle={propertyTitle}
+        avatarUrl={counterpart?.avatar_url ?? null}
+        onBack={handleBack}
+        onPressProperty={handlePressProperty}
+      />
 
-        <View style={styles.headerCenter}>
-          {counterpart?.avatar_url ? (
-            <Image
-              source={{ uri: counterpart.avatar_url }}
-              style={styles.headerAvatar}
-              contentFit="cover"
-              alt={`${displayName} avatar`}
-            />
-          ) : (
-            <View style={styles.headerAvatarPlaceholder}>
-              <Ionicons name="person" size={16} color={colors.secondary} />
+      {sendError ? (
+        <View style={styles.errorBanner}>
+          <Ionicons name="alert-circle" size={16} color={colors.onPrimary} />
+          <Text style={styles.errorBannerText} numberOfLines={2}>
+            {sendError}
+          </Text>
+        </View>
+      ) : null}
+
+      <FlatList
+        ref={flatListRef}
+        style={styles.list}
+        data={listItems}
+        keyExtractor={(item) => item.key}
+        renderItem={renderItem}
+        extraData={lastItemKey}
+        contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={80}
+        onContentSizeChange={handleContentSizeChange}
+        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        ListHeaderComponent={
+          loadingOlder ? (
+            <View style={styles.loadingOlder}>
+              <ActivityIndicator size="small" color={colors.secondary} />
             </View>
-          )}
-          <View style={styles.headerText}>
-            <Text style={styles.topBarTitle} numberOfLines={1}>
-              {displayName}
-            </Text>
-            <Text style={styles.topBarSubtitle} numberOfLines={1}>
-              {chat.properties?.title ?? 'Untitled property'}
+          ) : undefined
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons
+              name="chatbubble-ellipses-outline"
+              size={52}
+              color={colors.placeholder}
+            />
+            <Text style={styles.emptyTitle}>Say hello 👋</Text>
+            <Text style={styles.emptyText}>
+              This is the start of your conversation about “{propertyTitle}”.
             </Text>
           </View>
-        </View>
+        }
+      />
 
-        <View style={styles.iconButton} />
-      </View>
-
-      <View style={styles.content}>
-        <Ionicons
-          name="chatbubble-ellipses-outline"
-          size={56}
-          color={colors.placeholder}
-        />
-        <Text style={styles.contentTitle}>No messages yet</Text>
-        <Text style={styles.contentText}>
-          Messaging (history, sending, realtime) arrives in the next milestone.
-        </Text>
-      </View>
+      <MessageInput
+        value={draft}
+        onChangeText={setDraft}
+        onSend={handleSend}
+        sending={sending}
+        bottomInset={Math.max(insets.bottom, spacing.xs)}
+      />
     </SafeAreaView>
   );
 }
@@ -180,7 +289,6 @@ const styles = StyleSheet.create({
     color: colors.error,
     textAlign: 'center',
   },
-
   primaryButton: {
     minHeight: 44,
     paddingHorizontal: spacing.xl,
@@ -195,50 +303,41 @@ const styles = StyleSheet.create({
     color: colors.onPrimary,
   },
 
-  topBar: {
-    minHeight: 60,
-    paddingHorizontal: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.outlineVariant,
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerCenter: {
-    flex: 1,
+  errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    marginHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.error,
   },
-  headerAvatar: { width: 36, height: 36, borderRadius: radius.full },
-  headerAvatarPlaceholder: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surfaceVariant,
+  errorBannerText: {
+    ...typography.body,
+    color: colors.onPrimary,
+    flex: 1,
+    fontSize: 13,
   },
-  headerText: { flex: 1 },
-  topBarTitle: { ...theme.fonts.titleMedium, color: colors.onBackground },
-  topBarSubtitle: { ...typography.caption, color: colors.secondary },
 
-  content: {
+  list: { flex: 1 },
+  listContent: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+
+  loadingOlder: {
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+
+  emptyContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xl,
     gap: spacing.sm,
   },
-  contentTitle: { ...theme.fonts.titleLarge, color: colors.onBackground },
-  contentText: {
+  emptyTitle: { ...theme.fonts.titleLarge, color: colors.onBackground },
+  emptyText: {
     ...typography.body,
     color: colors.secondary,
     textAlign: 'center',
