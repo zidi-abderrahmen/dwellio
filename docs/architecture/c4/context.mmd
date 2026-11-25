@@ -1,11 +1,29 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'Roboto'}, 'c4': {'diagramMarginX': 50, 'diagramMarginY': 50, 'c4ShapeInRow': 3, 'c4BoundaryInRow': 1, 'width': 260, 'height': 90, 'boxMargin': 40}}}%%
+
 C4Context
   title System Context - Real Estate Mobile Services
-  Person(user, "User", "Buyer, tenant or owner who searches, publishes and discusses properties")
-  System(app, "Real Estate Mobile App", "Cross-platform mobile app delivered in two versions: Flutter and React Native")
-  System_Ext(supabase, "Supabase", "Backend as a service: authentication, PostgreSQL, storage, realtime")
-  System_Ext(maps, "Map Provider", "OpenStreetMap tiles / Google or Apple maps")
-  System_Ext(push, "Push Service (optional)", "Expo Push or Firebase Cloud Messaging - post-MVP")
-  Rel(user, app, "Searches, publishes, chats, saves favorites")
-  Rel(app, supabase, "Authenticates, reads and writes data, uploads photos, subscribes", "HTTPS / WebSocket")
-  Rel(app, maps, "Loads map tiles", "HTTPS")
-  Rel(push, user, "Sends push notifications (post-MVP)")
+
+  Person(user, "User", "Buyer, tenant or owner")
+  System(app, "Real Estate Mobile App", "Flutter / React Native app to search, publish and discuss properties")
+  System_Ext(push, "Push Service (post-MVP)", "Expo Push / FCM. Delivers notifications to the user")
+
+  System_Ext(maps, "Map Provider", "OpenStreetMap / Google / Apple Maps")
+  System_Ext(supabase, "Supabase", "Auth, PostgreSQL, storage, realtime")
+
+  Rel_R(user, app, "Uses", "Mobile UI")
+  Rel_R(app, push, "Registers device", "HTTPS")
+  Rel_D(app, supabase, "Auth and data", "HTTPS / WebSocket")
+  Rel_D(app, maps, "Loads map tiles", "HTTPS")
+
+  UpdateElementStyle(user, $fontColor="#ffffff", $bgColor="#1f2937", $borderColor="#111827")
+  UpdateElementStyle(app, $fontColor="#ffffff", $bgColor="#2563eb", $borderColor="#1e40af")
+  UpdateElementStyle(supabase, $fontColor="#ffffff", $bgColor="#059669", $borderColor="#047857")
+  UpdateElementStyle(maps, $fontColor="#ffffff", $bgColor="#6b7280", $borderColor="#4b5563")
+  UpdateElementStyle(push, $fontColor="#374151", $bgColor="#e5e7eb", $borderColor="#9ca3af")
+
+  UpdateRelStyle(user, app, $textColor="#111827", $lineColor="#111827")
+  UpdateRelStyle(app, push, $textColor="#6b7280", $lineColor="#9ca3af")
+  UpdateRelStyle(app, supabase, $textColor="#047857", $lineColor="#059669")
+  UpdateRelStyle(app, maps, $textColor="#4b5563", $lineColor="#6b7280")
+
+  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")

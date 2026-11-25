@@ -1,31 +1,48 @@
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'Roboto'}, 'c4': {'diagramMarginX': 50, 'diagramMarginY': 50, 'c4ShapeInRow': 3, 'c4BoundaryInRow': 1, 'width': 260, 'height': 100, 'boxMargin': 60}}}%%
+
 C4Container
   title Container Diagram - Real Estate Mobile Services
+
   Person(user, "User", "Buyer, tenant or owner")
-  System_Boundary(sys, "Real Estate Mobile Services") {
-    Container(flutter, "Flutter App", "Dart, Flutter", "Mobile app built by Housem")
-    Container(rn, "React Native App", "TypeScript, Expo", "Mobile app built by Gharbi")
-  }
-  System_Boundary(sb, "Supabase Project") {
-    Container(auth, "Auth", "Supabase Auth", "Email/password sign-up and login, JWT")
-    Container(api, "REST API", "PostgREST", "Auto-generated API, protected by RLS")
-    ContainerDb(db, "Database", "PostgreSQL", "Tables, RLS policies, triggers")
-    Container(storage, "Storage", "Supabase Storage", "Property photos and avatars")
-    Container(rt, "Realtime", "WebSocket", "Pushes new messages and notifications")
-  }
-  System_Ext(maps, "Map Provider", "OpenStreetMap / Google or Apple maps")
-  Rel(user, flutter, "Uses")
-  Rel(user, rn, "Uses")
-  Rel(flutter, auth, "Sign up, login", "HTTPS")
-  Rel(rn, auth, "Sign up, login", "HTTPS")
-  Rel(flutter, api, "Reads and writes data", "HTTPS / JSON")
-  Rel(rn, api, "Reads and writes data", "HTTPS / JSON")
-  Rel(flutter, storage, "Uploads and loads photos", "HTTPS")
-  Rel(rn, storage, "Uploads and loads photos", "HTTPS")
-  Rel(flutter, rt, "Subscribes to chat and notifications", "WebSocket")
-  Rel(rn, rt, "Subscribes to chat and notifications", "WebSocket")
+  Container(mobileApp, "Mobile App", "Flutter / React Native", "Same features on iOS and Android")
+  System_Ext(maps, "Map Provider", "OpenStreetMap / Google / Apple Maps")
+
+  Container(auth, "Supabase Auth", "Supabase Auth", "Sign-up, login, JWT")
+  Container(api, "Supabase REST API", "PostgREST", "Auto-generated API, protected by RLS")
+  Container(storage, "Supabase Storage", "Supabase Storage", "Property photos and avatars")
+
+  Container(rt, "Supabase Realtime", "WebSocket", "Pushes messages and notifications")
+  ContainerDb(db, "Supabase Database", "PostgreSQL", "Tables, RLS policies, triggers")
+
+  Rel(user, mobileApp, "Uses", "Mobile UI")
+  Rel(mobileApp, maps, "Loads tiles", "HTTPS")
+  Rel(mobileApp, auth, "Logs in", "HTTPS")
+  Rel(mobileApp, api, "Reads/writes", "HTTPS / JSON")
+  Rel(mobileApp, storage, "Photos", "HTTPS")
+  Rel(mobileApp, rt, "Subscribes", "WebSocket")
+  Rel(auth, db, "Users", "SQL")
   Rel(api, db, "Queries", "SQL")
-  Rel(auth, db, "Stores users", "SQL")
-  Rel(storage, db, "Stores file metadata", "SQL")
-  Rel(rt, db, "Listens to inserts", "Replication")
-  Rel(flutter, maps, "Loads map tiles", "HTTPS")
-  Rel(rn, maps, "Loads map tiles", "HTTPS")
+  Rel(storage, db, "Metadata", "SQL")
+  Rel(rt, db, "Listens", "Replication")
+
+  UpdateElementStyle(user, $fontColor="#ffffff", $bgColor="#1f2937", $borderColor="#111827")
+  UpdateElementStyle(mobileApp, $fontColor="#ffffff", $bgColor="#2563eb", $borderColor="#1e40af")
+  UpdateElementStyle(maps, $fontColor="#ffffff", $bgColor="#6b7280", $borderColor="#4b5563")
+  UpdateElementStyle(auth, $fontColor="#ffffff", $bgColor="#10b981", $borderColor="#047857")
+  UpdateElementStyle(api, $fontColor="#ffffff", $bgColor="#10b981", $borderColor="#047857")
+  UpdateElementStyle(storage, $fontColor="#ffffff", $bgColor="#10b981", $borderColor="#047857")
+  UpdateElementStyle(rt, $fontColor="#ffffff", $bgColor="#10b981", $borderColor="#047857")
+  UpdateElementStyle(db, $fontColor="#ffffff", $bgColor="#047857", $borderColor="#064e3b")
+
+  UpdateRelStyle(user, mobileApp, $textColor="#111827", $lineColor="#111827")
+  UpdateRelStyle(mobileApp, maps, $textColor="#4b5563", $lineColor="#6b7280")
+  UpdateRelStyle(mobileApp, auth, $textColor="#047857", $lineColor="#10b981")
+  UpdateRelStyle(mobileApp, api, $textColor="#047857", $lineColor="#10b981")
+  UpdateRelStyle(mobileApp, storage, $textColor="#047857", $lineColor="#10b981")
+  UpdateRelStyle(mobileApp, rt, $textColor="#047857", $lineColor="#10b981")
+  UpdateRelStyle(auth, db, $textColor="#064e3b", $lineColor="#064e3b")
+  UpdateRelStyle(api, db, $textColor="#064e3b", $lineColor="#064e3b")
+  UpdateRelStyle(storage, db, $textColor="#064e3b", $lineColor="#064e3b")
+  UpdateRelStyle(rt, db, $textColor="#064e3b", $lineColor="#064e3b")
+
+  UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="1")
