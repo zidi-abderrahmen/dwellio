@@ -11,6 +11,7 @@ import {
 
 import { AuthProvider, useAuthSession } from '../context/AuthContext';
 import { FavoriteProvider } from '../context/FavoriteContext';
+import { NotificationProvider } from '../context/NotificationContext';
 import { theme } from '../theme';
 
 // --------------------------------------------------
@@ -27,6 +28,7 @@ const PROTECTED_ROOTS = new Set([
   'chat',
   'profile',
   'my-listings',
+  'notifications',
 ]);
 
 function firstSegment(pathname: string): string | undefined {
@@ -116,7 +118,9 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <AuthProvider>
         <FavoriteProvider>
-          <RootNavigator />
+          <NotificationProvider>
+            <RootNavigator />
+          </NotificationProvider>
         </FavoriteProvider>
       </AuthProvider>
     </SafeAreaProvider>

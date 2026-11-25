@@ -23,6 +23,7 @@ import { theme, spacing, radius, typography } from '../../theme';
 import { getCurrentUser } from '../../services/authService';
 import { getFilteredProperties } from '../../services/propertyService';
 import { useFavorite } from '../../context/FavoriteContext';
+import { useNotifications } from '../../context/NotificationContext';
 import type { PropertySearchResult } from '../../types/property';
 import type { PropertyFilters } from '../../types/propertyFilters';
 
@@ -51,8 +52,9 @@ export default function HomeScreen() {
  const skipNextSearchDebounce = useRef(false);
  const skipInitialSearchDebounce = useRef(true);
  const skipInitialFilterLoad = useRef(true);
- const router = useRouter();
- const pathname = usePathname();
+  const router = useRouter();
+  const pathname = usePathname();
+  const { unreadCount } = useNotifications();
 
  // -----------------------------------------------
  // Load properties from Supabase
@@ -323,12 +325,26 @@ export default function HomeScreen() {
  <Text style={styles.title}>Immobilier</Text>
  </View>
 
- <View style={styles.countBadge}>
- <Text style={styles.countText}>
- {loading ? '...' : `${properties.length} biens`}
- </Text>
- </View>
- </View>
+  <View style={styles.countBadge}>
+  <Text style={styles.countText}>
+  {loading ? '...' : `${properties.length} biens`}
+  </Text>
+  </View>
+
+  <Pressable
+  onPress={() => router.push('/notifications' as never)}
+  style={styles.bellButton}
+  accessibilityRole="button"
+  accessibilityLabel="Notifications"
+  >
+  <Ionicons name="notifications-outline" size={24} color={colors.secondary} />
+  {unreadCount > 0 && (
+  <View style={styles.bellBadge}>
+  <Text style={styles.bellBadgeText}>{unreadCount}</Text>
+  </View>
+  )}
+  </Pressable>
+  </View>
 
  <View style={styles.searchContainer}>
  <Ionicons name="search-outline" size={20} color={colors.secondary} />
@@ -436,16 +452,46 @@ const styles = StyleSheet.create({
  ...theme.fonts.headlineMedium,
  color: colors.primary,
  },
- countBadge: {
- backgroundColor: colors.surfaceVariant,
- paddingHorizontal: spacing.md,
- paddingVertical: spacing.sm,
- borderRadius: radius.full,
- },
- countText: {
- ...theme.fonts.labelMedium,
- color: colors.secondary,
- },
+  countBadge: {
+  backgroundColor: colors.surfaceVariant,
+  paddingHorizontal: spacing.md,
+  paddingVertical: spacing.sm,
+  borderRadius: radius.full,
+  },
+  countText: {
+  ...theme.fonts.labelMedium,
+  color: colors.secondary,
+  },
+  bellButton: {
+  position: 'relative',
+  width: 40,
+  height: 40,
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: radius.full,
+  backgroundColor: colors.surfaceVariant,
+  marginLeft: spacing.sm,
+  },
+  bellBadge: {
+  position: 'absolute',
+  top: 2,
+  right: 2,
+  minWidth: 16,
+  height: 16,
+  paddingHorizontal: 4,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: colors.primary,
+  borderRadius: radius.full,
+  borderWidth: 2,
+  borderColor: colors.background,
+  },
+  bellBadgeText: {
+  ...theme.fonts.labelSmall,
+  color: colors.onPrimary,
+  fontSize: 10,
+  lineHeight: 14,
+  },
 
  searchContainer: {
  minHeight: 48,
