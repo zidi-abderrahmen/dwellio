@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class UserProfile {
@@ -42,14 +44,49 @@ class ProfileService {
 
   static const String _profileColumns = 'id, full_name, phone, avatar_url, bio';
 
+  /// Uploads the current user's avatar and returns a cache-busted public URL.
+  Future<String> uploadAvatar({
+    required String fileName,
+    required Uint8List bytes,
+  }) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw const ProfileFailure(
+        'You must be signed in to upload a profile photo.',
+      );
+    }
+
+    if (bytes.isEmpty) {
+      throw const ProfileFailure('The selected profile photo is empty.');
+    }
+
+    final extension = _avatarExtension(fileName);
+    final storagePath = '${user.id}/avatar.$extension';
+    final storage = _client.storage.from('avatars');
+
+    try {
+      await storage.uploadBinary(
+        storagePath,
+        bytes,
+        fileOptions: FileOptions(
+          contentType: _avatarContentType(extension),
+          upsert: true,
+        ),
+      );
+
+      final publicUrl = storage.getPublicUrl(storagePath);
+      return '$publicUrl?v=${DateTime.now().microsecondsSinceEpoch}';
+    } on StorageException catch (e) {
+      throw ProfileFailure('Unable to upload your profile photo: ${e.message}');
+    }
+  }
+
   /// Retrieves the currently authenticated user's profile.
   Future<UserProfile> getMyProfile() async {
     final user = _client.auth.currentUser;
 
     if (user == null) {
-      throw const ProfileFailure(
-        'You must be signed in to view your profile.',
-      );
+      throw const ProfileFailure('You must be signed in to view your profile.');
     }
 
     try {
@@ -60,9 +97,7 @@ class ProfileService {
           .maybeSingle();
 
       if (data == null) {
-        throw const ProfileFailure(
-          'Your profile could not be found.',
-        );
+        throw const ProfileFailure('Your profile could not be found.');
       }
 
       return UserProfile.fromJson(data);
@@ -114,8 +149,26 @@ class ProfileService {
   String? _normalize(String? value) {
     final normalized = value?.trim();
 
-    return normalized == null || normalized.isEmpty
-        ? null
-        : normalized;
+    return normalized == null || normalized.isEmpty ? null : normalized;
+  }
+
+  String _avatarExtension(String fileName) {
+    final extension = fileName.split('.').last.toLowerCase();
+
+    return switch (extension) {
+      'png' || 'webp' || 'gif' || 'heic' || 'heif' || 'jpeg' => extension,
+      _ => 'jpg',
+    };
+  }
+
+  String _avatarContentType(String extension) {
+    return switch (extension) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'gif' => 'image/gif',
+      'heic' => 'image/heic',
+      'heif' => 'image/heif',
+      _ => 'image/jpeg',
+    };
   }
 }

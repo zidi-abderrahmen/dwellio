@@ -87,10 +87,7 @@ const Map<PropertyType, String> _propertyTypeLabels = {
 // Formatting helpers
 // --------------------------------------------------
 
-String _formatFrenchNumber(
-  num value, {
-  int maximumFractionDigits = 2,
-}) {
+String _formatFrenchNumber(num value, {int maximumFractionDigits = 2}) {
   final isNegative = value < 0;
   final fixedValue = value.abs().toStringAsFixed(maximumFractionDigits);
   final parts = fixedValue.split('.');
@@ -158,8 +155,8 @@ class PropertyCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final priceText = _formatPrice(property.price, currencyLabel);
-    final periodText = period ??
-        (property.listingType == ListingType.rent ? '/ month' : '');
+    final periodText =
+        period ?? (property.listingType == ListingType.rent ? '/ month' : '');
     final propertyTypeLabel = _propertyTypeLabels[property.propertyType]!;
 
     final String? badgeLabel = switch (variant) {
@@ -173,21 +170,18 @@ class PropertyCard extends StatelessWidget {
       height: 334,
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          width: 1,
-          color: AppColors.outline,
-        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(width: 1, color: AppColors.outlineVariant),
         boxShadow: const [
           BoxShadow(
-            color: Color.fromRGBO(0, 0, 0, 0.08),
-            offset: Offset(0, 2),
-            blurRadius: 4,
+            color: Color(0x100C3448),
+            offset: Offset(0, 8),
+            blurRadius: 24,
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(23),
         child: Material(
           color: AppColors.surface,
           child: InkWell(
@@ -217,7 +211,6 @@ class PropertyCard extends StatelessWidget {
                         _buildImagePlaceholder(),
 
                       // Listing Badge
-
                       if (badgeLabel != null)
                         Positioned(
                           left: 12,
@@ -248,7 +241,6 @@ class PropertyCard extends StatelessWidget {
                         ),
 
                       // Favorite Button
-
                       Positioned(
                         top: 4,
                         right: 2,
@@ -299,7 +291,6 @@ class PropertyCard extends StatelessWidget {
                 // -----------------------------------------
                 // Content
                 // -----------------------------------------
-
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -349,7 +340,6 @@ class PropertyCard extends StatelessWidget {
                         const SizedBox(height: 8),
 
                         // Title
-
                         SizedBox(
                           height: 24,
                           child: Text(
@@ -370,7 +360,6 @@ class PropertyCard extends StatelessWidget {
                         const SizedBox(height: 8),
 
                         // Location Row
-
                         SizedBox(
                           height: 20,
                           child: Row(
@@ -403,7 +392,6 @@ class PropertyCard extends StatelessWidget {
                         const SizedBox(height: 8),
 
                         // Specs Row
-
                         SizedBox(
                           height: 24,
                           child: Row(
@@ -414,7 +402,9 @@ class PropertyCard extends StatelessWidget {
                                     Flexible(
                                       child: _buildSpecItem(
                                         icon: Icons.open_in_full,
-                                        text: _formatSurface(property.surfaceM2),
+                                        text: _formatSurface(
+                                          property.surfaceM2,
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(width: 12),
@@ -429,11 +419,14 @@ class PropertyCard extends StatelessWidget {
                               ),
 
                               // Property Type Chip
-
                               Container(
-                                constraints: const BoxConstraints(maxWidth: 100),
+                                constraints: const BoxConstraints(
+                                  maxWidth: 100,
+                                ),
                                 height: 24,
-                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                ),
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
                                   color: AppColors.surfaceVariant,
@@ -480,18 +473,11 @@ class PropertyCard extends StatelessWidget {
     );
   }
 
-  Widget _buildSpecItem({
-    required IconData icon,
-    required String text,
-  }) {
+  Widget _buildSpecItem({required IconData icon, required String text}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          icon,
-          size: 16,
-          color: AppColors.secondary,
-        ),
+        Icon(icon, size: 16, color: AppColors.secondary),
         const SizedBox(width: 4),
         Flexible(
           child: Text(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../core/theme.dart';
 
@@ -8,11 +9,7 @@ import '../core/theme.dart';
 // --------------------------------------------------
 
 class AuthScaffold extends StatelessWidget {
-  const AuthScaffold({
-    super.key,
-    required this.leading,
-    required this.child,
-  });
+  const AuthScaffold({super.key, required this.leading, required this.child});
 
   final Widget leading;
   final Widget child;
@@ -51,11 +48,7 @@ class AuthScaffold extends StatelessWidget {
 // --------------------------------------------------
 
 class AuthHeader extends StatelessWidget {
-  const AuthHeader({
-    super.key,
-    required this.title,
-    required this.subtitle,
-  });
+  const AuthHeader({super.key, required this.title, required this.subtitle});
 
   final String title;
   final String subtitle;
@@ -65,26 +58,24 @@ class AuthHeader extends StatelessWidget {
     return Column(
       children: [
         Container(
-          width: 56,
-          height: 56,
-          alignment: Alignment.center,
+          width: 72,
+          height: 72,
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: AppColors.primary,
-            borderRadius: BorderRadius.circular(12),
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: AppColors.outlineVariant),
           ),
-          child: const Icon(
-            Icons.home_filled,
-            size: 32,
-            color: AppColors.onPrimary,
+          child: SvgPicture.asset(
+            'assets/images/dwellio_logo.svg',
+            semanticsLabel: 'Dwellio logo',
           ),
         ),
         const SizedBox(height: 16),
         Text(
           title,
           textAlign: TextAlign.center,
-          style: Theme.of(context)
-              .textTheme
-              .headlineMedium
+          style: Theme.of(context).textTheme.headlineMedium
               ?.copyWith(color: AppColors.primary),
         ),
         const SizedBox(height: 4),
@@ -122,13 +113,13 @@ class AuthCard extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(width: 1, color: AppColors.outline),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(width: 1, color: AppColors.outlineVariant),
         boxShadow: const [
           BoxShadow(
-            color: Color.fromRGBO(0, 0, 0, 0.08),
-            offset: Offset(0, 2),
-            blurRadius: 4,
+            color: Color(0x100C3448),
+            offset: Offset(0, 10),
+            blurRadius: 28,
           ),
         ],
       ),
@@ -143,7 +134,7 @@ class AuthCard extends StatelessWidget {
 
 OutlineInputBorder _border(Color color, {double width = 1}) {
   return OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
+    borderRadius: BorderRadius.circular(16),
     borderSide: BorderSide(color: color, width: width),
   );
 }
@@ -164,8 +155,8 @@ InputDecoration authInputDecoration({
       final color = states.contains(WidgetState.error)
           ? AppColors.error
           : states.contains(WidgetState.focused)
-              ? AppColors.primary
-              : AppColors.secondary;
+          ? AppColors.primary
+          : AppColors.secondary;
       return TextStyle(
         fontFamily: AppFontConfig.fontFamily,
         fontSize: 12,
@@ -225,10 +216,8 @@ class AuthSubmitButton extends StatelessWidget {
         foregroundColor: AppColors.onPrimary,
         disabledBackgroundColor: AppColors.primary.withValues(alpha: 0.6),
         disabledForegroundColor: AppColors.onPrimary,
-        minimumSize: const Size.fromHeight(48),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        minimumSize: const Size.fromHeight(52),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         textStyle: const TextStyle(
           fontFamily: AppFontConfig.fontFamily,
           fontSize: 16,

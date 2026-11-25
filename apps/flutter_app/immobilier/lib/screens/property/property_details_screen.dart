@@ -282,9 +282,7 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const CircularProgressIndicator(
-                color: AppColors.primary,
-              ),
+              const CircularProgressIndicator(color: AppColors.primary),
               const SizedBox(height: 16),
               Text(
                 'Loading property details...',
@@ -338,11 +336,9 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: AppColors.onPrimary,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(16),
                       ),
                     ),
                     child: Text(
@@ -380,7 +376,8 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
   // -----------------------------------------------
 
   Widget _buildTopBar() {
-    final favorited = ref.watch(favoritePropertyIdsProvider)
+    final favorited = ref
+        .watch(favoritePropertyIdsProvider)
         .contains(widget.propertyId);
 
     return Container(
@@ -421,9 +418,7 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
               color: favorited ? AppColors.favorite : AppColors.secondary,
             ),
             onPressed: _toggleFavorite,
-            tooltip: favorited
-                ? 'Remove from favorites'
-                : 'Add to favorites',
+            tooltip: favorited ? 'Remove from favorites' : 'Add to favorites',
           ),
         ],
       ),
@@ -443,11 +438,7 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.home_outlined,
-              size: 56,
-              color: AppColors.secondary,
-            ),
+            Icon(Icons.home_outlined, size: 56, color: AppColors.secondary),
             const SizedBox(height: 8),
             Text(
               'No images available',
@@ -517,25 +508,22 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
               color: AppColors.background,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(
-                  images.length,
-                  (index) {
-                    final isActive = index == _activeImageIndex;
+                children: List.generate(images.length, (index) {
+                  final isActive = index == _activeImageIndex;
 
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      width: isActive ? 18 : 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: isActive
-                            ? AppColors.primary
-                            : AppColors.secondary.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(100),
-                      ),
-                    );
-                  },
-                ),
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: isActive ? 18 : 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? AppColors.primary
+                          : AppColors.secondary.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                  );
+                }),
               ),
             ),
         ],
@@ -644,7 +632,7 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppColors.surfaceVariant,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: const Text(
           'Map unavailable: property coordinates are not available.',
@@ -657,7 +645,7 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
     final propertyLocation = LatLng(latitude, longitude);
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(18),
       child: SizedBox(
         height: 220,
         width: double.infinity,
@@ -709,10 +697,7 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
       runSpacing: 8,
       children: tags.map((tag) {
         return Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 6,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             color: AppColors.surface,
             borderRadius: BorderRadius.circular(100),
@@ -746,16 +731,12 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 22,
-              color: AppColors.primary,
-            ),
+            Icon(icon, size: 22, color: AppColors.primary),
             const SizedBox(height: 6),
             Text(
               value,
@@ -836,12 +817,11 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
         children: [
-          if (owner?.avatarUrl != null &&
-              owner!.avatarUrl!.isNotEmpty)
+          if (owner?.avatarUrl != null && owner!.avatarUrl!.isNotEmpty)
             ClipOval(
               child: Image.network(
                 owner.avatarUrl!,
@@ -900,11 +880,7 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
         shape: BoxShape.circle,
         color: AppColors.background,
       ),
-      child: const Icon(
-        Icons.person,
-        size: 22,
-        color: AppColors.secondary,
-      ),
+      child: const Icon(Icons.person, size: 22, color: AppColors.secondary),
     );
   }
 
@@ -912,10 +888,7 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
   // Section
   // -----------------------------------------------
 
-  Widget _buildSection({
-    required String title,
-    required Widget child,
-  }) {
+  Widget _buildSection({required String title, required Widget child}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -957,9 +930,7 @@ class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
     final property = _property!;
 
     final images = List<PropertyImage>.from(property.propertyImages)
-      ..sort(
-        (first, second) => first.position.compareTo(second.position),
-      );
+      ..sort((first, second) => first.position.compareTo(second.position));
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
