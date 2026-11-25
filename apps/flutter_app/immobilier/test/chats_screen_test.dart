@@ -22,7 +22,7 @@ void main() {
     await tester.tap(find.text('Owner Name'));
     await tester.pumpAndSettle();
     expect(find.byType(ChatScreen), findsOneWidget);
-    expect(find.text('Conversation ID: chat-1'), findsOneWidget);
+    expect(find.text('Start the conversation'), findsOneWidget);
   });
 
   testWidgets('owner sees buyer rather than their own name', (tester) async {
@@ -77,8 +77,10 @@ Future<void> _pumpChats(
         routes: [
           GoRoute(
             path: ':chatId',
-            builder: (context, state) =>
-                ChatScreen(chatId: state.pathParameters['chatId']!),
+            builder: (context, state) => ChatScreen(
+              chatId: state.pathParameters['chatId']!,
+              chatService: chatService,
+            ),
           ),
         ],
       ),
@@ -128,8 +130,18 @@ class _FakeChatService implements ChatService {
       'chat-1';
 
   @override
+  Future<void> sendMessage(String chatId, String content) async {}
+
+  @override
+  Future<void> markReceivedMessagesAsRead(String chatId) async {}
+
+  @override
   Future<List<ChatConversation>> getConversations() async {
     if (error != null) throw ChatServiceFailure(error!);
     return conversations;
   }
+
+  @override
+  Stream<List<Map<String, dynamic>>> getMessages(String chatId) =>
+      Stream.value(const []);
 }

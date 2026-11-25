@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:immobilier/models/chat.dart';
+import 'package:immobilier/providers/auth_providers.dart';
 import 'package:immobilier/screens/chat/chat_screen.dart';
+import 'package:immobilier/services/chat_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   testWidgets(
     'opening a conversation from property details keeps one shell navigator',
     (tester) async {
+      final chatService = _FakeChatService();
       final router = GoRouter(
         initialLocation: '/property/property-1',
         routes: [
@@ -23,6 +29,7 @@ void main() {
             path: '/chats/:chatId',
             builder: (context, state) => ChatScreen(
               chatId: state.pathParameters['chatId']!,
+              chatService: chatService,
             ),
           ),
           StatefulShellRoute.indexedStack(
@@ -53,12 +60,17 @@ void main() {
       );
       addTearDown(router.dispose);
 
-      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [sessionProvider.overrideWithValue(_session)],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('Contact Owner'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Conversation ID: chat-1'), findsOneWidget);
+      expect(find.text('Start the conversation'), findsOneWidget);
 
       router.pop();
       await tester.pumpAndSettle();
@@ -66,4 +78,35 @@ void main() {
       expect(find.text('Contact Owner'), findsOneWidget);
     },
   );
+}
+
+final _session = Session(
+  accessToken: 'test-token',
+  tokenType: 'bearer',
+  user: User(
+    id: 'buyer',
+    appMetadata: const {},
+    userMetadata: const {},
+    aud: 'authenticated',
+    createdAt: '2026-01-01T00:00:00Z',
+  ),
+);
+
+class _FakeChatService implements ChatService {
+  @override
+  Future<String> getOrCreateChat(String propertyId, String ownerId) async =>
+      'chat-1';
+
+  @override
+  Future<List<ChatConversation>> getConversations() async => [];
+
+  @override
+  Future<void> sendMessage(String chatId, String content) async {}
+
+  @override
+  Future<void> markReceivedMessagesAsRead(String chatId) async {}
+
+  @override
+  Stream<List<Map<String, dynamic>>> getMessages(String chatId) =>
+      Stream.value(const []);
 }
