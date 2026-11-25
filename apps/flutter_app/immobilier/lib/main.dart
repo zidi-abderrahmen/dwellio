@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -12,6 +13,7 @@ import 'core/theme.dart';
 import 'providers/auth_providers.dart';
 import 'providers/property_providers.dart';
 import 'screens/property/property_filter_sheet.dart';
+import 'screens/notifications/notification_bell.dart';
 import 'widgets/property_card.dart';
 import 'models/property_models.dart' as property_models;
 import 'providers/favorite_providers.dart';
@@ -24,9 +26,10 @@ import 'services/property_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  await dotenv.load(fileName: '.env');
   await Supabase.initialize(
     url: SupabaseConfig.url,
-    anonKey: SupabaseConfig.anonKey,
+    publishableKey: SupabaseConfig.anonKey,
   );
 
   runApp(const ProviderScope(child: ImmobilierApp()));
@@ -498,6 +501,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                     ),
 
+                    NotificationBell(
+                      onPressed: () => context.push(AppRoutes.notifications),
+                    ),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,

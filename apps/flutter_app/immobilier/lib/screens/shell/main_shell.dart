@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/router.dart';
 import '../../core/theme.dart';
 import '../../providers/auth_providers.dart';
+import '../../providers/notification_providers.dart';
+import 'notification_banner_listener.dart';
 
 // --------------------------------------------------
 // Tabs — same order as AppRoutes.tabs
@@ -24,21 +26,13 @@ class _TabItem {
 }
 
 const List<_TabItem> _tabItems = [
-  _TabItem(
-    icon: Icons.home_outlined,
-    selectedIcon: Icons.home,
-    label: 'Home',
-  ),
+  _TabItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Home'),
   _TabItem(
     icon: Icons.favorite_border,
     selectedIcon: Icons.favorite,
     label: 'Favorites',
   ),
-  _TabItem(
-    icon: Icons.add,
-    selectedIcon: Icons.add,
-    label: 'Add',
-  ),
+  _TabItem(icon: Icons.add, selectedIcon: Icons.add, label: 'Add'),
   _TabItem(
     icon: Icons.chat_bubble_outline,
     selectedIcon: Icons.chat_bubble,
@@ -80,9 +74,26 @@ class MainShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final userId = ref.watch(sessionProvider)?.user.id;
+    final feed = userId == null
+        ? null
+        : ref.watch(notificationFeedProvider(userId));
+
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: navigationShell,
+      body: Stack(
+        children: [
+          navigationShell,
+          if (feed != null)
+            NotificationBannerListener(
+              key: ValueKey(userId),
+              notifications: feed.stream,
+              onOpen: () {
+                if (context.mounted) context.push(AppRoutes.notifications);
+              },
+            ),
+        ],
+      ),
       bottomNavigationBar: _AppNavigationBar(
         selectedIndex: navigationShell.currentIndex,
         onSelected: (index) => _onTabSelected(context, ref, index),
@@ -197,11 +208,7 @@ class _AddPill extends StatelessWidget {
         color: AppColors.primary,
         borderRadius: BorderRadius.circular(999),
       ),
-      child: const Icon(
-        Icons.add,
-        size: 24,
-        color: AppColors.onPrimary,
-      ),
+      child: const Icon(Icons.add, size: 24, color: AppColors.onPrimary),
     );
   }
 }
