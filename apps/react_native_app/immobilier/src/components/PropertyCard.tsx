@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Image,
   Pressable,
   StyleSheet,
   Text,
   View,
-  type ImageSourcePropType,
 } from 'react-native';
+import { Image, type ImageSource } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 
 import type {
@@ -31,7 +30,7 @@ export type PropertyCardVariant = 'standard' | 'featured' | 'newListing';
 export interface PropertyCardProps {
   // The card accepts the actual database-shaped property fields.
   property: SharedPropertyCardData;
-  image?: ImageSourcePropType | null;
+  image?: ImageSource | null;
   variant?: PropertyCardVariant;
   favorite?: boolean;
   currencyLabel?: string;
@@ -141,7 +140,7 @@ export function PropertyCard({
           <Image
             source={image}
             style={styles.propertyImage}
-            resizeMode="cover"
+            contentFit="cover"
             onError={() => setImageFailed(true)}
             accessible={false}
           />

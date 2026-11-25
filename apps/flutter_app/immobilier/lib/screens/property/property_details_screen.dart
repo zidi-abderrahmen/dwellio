@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
 
+import '../../core/router.dart';
 import '../../core/theme.dart';
 import '../../models/property_models.dart';
+import '../../providers/auth_providers.dart';
+import '../../providers/favorite_providers.dart';
+import '../../services/chat_service.dart';
 import '../../services/property_service.dart';
 
 // --------------------------------------------------
@@ -50,25 +57,31 @@ String getPropertyTypeLabel(String type) {
 // Property Details Screen
 // --------------------------------------------------
 
-class PropertyDetailsScreen extends StatefulWidget {
+class PropertyDetailsScreen extends ConsumerStatefulWidget {
   const PropertyDetailsScreen({
     super.key,
     required this.propertyId,
+    this.chatService,
+    this.loadProperty,
   });
 
   final String propertyId;
+  final ChatService? chatService;
+  final Future<PropertyWithRelations> Function(String propertyId)? loadProperty;
 
   @override
-  State<PropertyDetailsScreen> createState() =>
+  ConsumerState<PropertyDetailsScreen> createState() =>
       _PropertyDetailsScreenState();
 }
 
-class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
-  final PropertyService _propertyService = PropertyService();
+class _PropertyDetailsScreenState extends ConsumerState<PropertyDetailsScreen> {
+  late final PropertyService _propertyService = PropertyService();
+  late final ChatService _chatService = widget.chatService ?? ChatService();
 
   PropertyWithRelations? _property;
 
   bool _loading = true;
+  bool _contactingOwner = false;
 
   String? _loadError;
 
@@ -84,6 +97,12 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   void initState() {
     super.initState();
     _loadProperty();
+    _loadFavoriteIds();
+  }
+
+  Future<void> _loadFavoriteIds() async {
+    if (ref.read(sessionProvider) == null) return;
+    await ref.read(favoritePropertyIdsProvider.notifier).load();
   }
 
   @override
@@ -120,7 +139,10 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     });
 
     try {
-      final result = await _propertyService.getPropertyById(widget.propertyId);
+      final loader = widget.loadProperty;
+      final result = loader == null
+          ? await _propertyService.getPropertyById(widget.propertyId)
+          : await loader(widget.propertyId);
 
       if (!mounted) return;
 
@@ -159,6 +181,93 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     if (context.canPop()) {
       context.pop();
     }
+  }
+
+  // -----------------------------------------------
+  // Favorite
+  // -----------------------------------------------
+
+  Future<void> _toggleFavorite() async {
+    if (ref.read(sessionProvider) == null) {
+      context.push(AppRoutes.loginLocation(from: AppRoutes.favorites));
+      return;
+    }
+
+    final notifier = ref.read(favoritePropertyIdsProvider.notifier);
+    final wasFavorited = ref
+        .read(favoritePropertyIdsProvider)
+        .contains(widget.propertyId);
+
+    try {
+      if (wasFavorited) {
+        await notifier.remove(widget.propertyId);
+      } else {
+        await notifier.add(widget.propertyId);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.toString().startsWith('Exception:')
+                ? error.toString().substring('Exception:'.length).trim()
+                : error.toString(),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _contactOwner(PropertyWithRelations property) async {
+    final userId = ref.read(sessionProvider)?.user.id;
+    if (userId == null) {
+      context.push(AppRoutes.loginLocation(from: AppRoutes.chats));
+      return;
+    }
+    if (userId == property.ownerId || _contactingOwner) return;
+
+    setState(() => _contactingOwner = true);
+    try {
+      final chatId = await _chatService.getOrCreateChat(
+        property.id,
+        property.ownerId,
+      );
+      if (!mounted) return;
+      context.push(AppRoutes.chatLocation(chatId));
+    } catch (error) {
+      debugPrint('Failed to open property owner chat: $error');
+      if (!mounted) return;
+      final message = error.toString().startsWith('Exception:')
+          ? error.toString().substring('Exception:'.length).trim()
+          : error.toString();
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      if (mounted) setState(() => _contactingOwner = false);
+    }
+  }
+
+  Widget _buildContactOwner(PropertyWithRelations property) {
+    final currentUserId = ref.watch(sessionProvider)?.user.id;
+    if (currentUserId == property.ownerId) return const SizedBox.shrink();
+
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: FilledButton.icon(
+        onPressed: _contactingOwner ? null : () => _contactOwner(property),
+        icon: _contactingOwner
+            ? const SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.onPrimary,
+                ),
+              )
+            : const Icon(Icons.chat_bubble_outline),
+        label: Text(_contactingOwner ? 'Opening chat...' : 'Contact Owner'),
+      ),
+    );
   }
 
   // -----------------------------------------------
@@ -271,6 +380,9 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   // -----------------------------------------------
 
   Widget _buildTopBar() {
+    final favorited = ref.watch(favoritePropertyIdsProvider)
+        .contains(widget.propertyId);
+
     return Container(
       constraints: const BoxConstraints(minHeight: 56),
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -303,7 +415,16 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
               color: AppColors.onSurface,
             ),
           ),
-          const SizedBox(width: 40, height: 40),
+          IconButton(
+            icon: Icon(
+              favorited ? Icons.favorite : Icons.favorite_border,
+              color: favorited ? AppColors.favorite : AppColors.secondary,
+            ),
+            onPressed: _toggleFavorite,
+            tooltip: favorited
+                ? 'Remove from favorites'
+                : 'Add to favorites',
+          ),
         ],
       ),
     );
@@ -499,6 +620,76 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildPropertyMap(PropertyWithRelations property) {
+    final latitude = property.latitude;
+    final longitude = property.longitude;
+    final hasValidCoordinates =
+        latitude != null &&
+        longitude != null &&
+        latitude.isFinite &&
+        longitude.isFinite &&
+        latitude >= -90 &&
+        latitude <= 90 &&
+        longitude >= -180 &&
+        longitude <= 180;
+
+    if (!hasValidCoordinates) {
+      return Container(
+        height: 220,
+        width: double.infinity,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceVariant,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Text(
+          'Map unavailable: property coordinates are not available.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.secondary),
+        ),
+      );
+    }
+
+    final propertyLocation = LatLng(latitude, longitude);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        height: 220,
+        width: double.infinity,
+        child: FlutterMap(
+          options: MapOptions(initialCenter: propertyLocation, initialZoom: 15),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.example.immobilier',
+            ),
+            MarkerLayer(
+              markers: [
+                Marker(
+                  point: propertyLocation,
+                  width: 40,
+                  height: 40,
+                  child: const Icon(
+                    Icons.location_on,
+                    color: AppColors.primary,
+                    size: 40,
+                  ),
+                ),
+              ],
+            ),
+            RichAttributionWidget(
+              attributions: [
+                TextSourceAttribution('OpenStreetMap contributors'),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -821,9 +1012,22 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                             const SizedBox(height: 24),
 
                             _buildSection(
+                              title: 'Map',
+                              child: _buildPropertyMap(property),
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            _buildSection(
                               title: 'Owner',
                               child: _buildOwner(property),
                             ),
+
+                            if (ref.watch(sessionProvider)?.user.id !=
+                                property.ownerId) ...[
+                              const SizedBox(height: 24),
+                              _buildContactOwner(property),
+                            ],
 
                             const SizedBox(height: 32),
                           ],

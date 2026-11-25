@@ -25,6 +25,8 @@
     },
     "plugins": [
       "expo-router",
+      "expo-location",
+      "react-native-maps",
       [
         "expo-splash-screen",
         {
@@ -33,7 +35,8 @@
           "imageWidth": 76
         }
       ],
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
