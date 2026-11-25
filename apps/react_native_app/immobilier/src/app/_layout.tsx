@@ -1,131 +1,133 @@
 import { useEffect } from 'react';
+import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-
 import {
- Stack,
- useGlobalSearchParams,
- usePathname,
- useRouter,
- type Href,
+  Stack,
+  useGlobalSearchParams,
+  usePathname,
+  useRouter,
+  type Href,
 } from 'expo-router';
 
-import {
- AuthProvider,
- useAuthSession,
-} from '../context/AuthContext';
+import { AuthProvider, useAuthSession } from '../context/AuthContext';
 import { FavoriteProvider } from '../context/FavoriteContext';
+import { theme } from '../theme';
 
 // --------------------------------------------------
-// Routes
+// Route configuration — matched by first URL segment so
+// dynamic routes (e.g. /chat/abc) are covered too.
 // --------------------------------------------------
 
-const AUTH_ROUTES = ['/login', '/register'] as const;
+const AUTH_ROOTS = new Set(['login', 'register']);
 
-const AUTH_REDIRECT_ROUTES = [
- '/',
- '/favorites',
- '/add',
- '/chats',
- '/profile',
- '/my-listings',
-] as const;
+const PROTECTED_ROOTS = new Set([
+  'favorites',
+  'add',
+  'chats',
+  'chat',
+  'profile',
+  'my-listings',
+]);
 
-const PROTECTED_ROUTES = [
- '/favorites',
- '/add',
- '/chats',
- '/profile',
- '/my-listings',
-] as const;
+function firstSegment(pathname: string): string | undefined {
+  return pathname.split('/').filter(Boolean)[0];
+}
 
-// --------------------------------------------------
-// Route Helpers
-// --------------------------------------------------
+function isAuthRoute(pathname: string): boolean {
+  const seg = firstSegment(pathname);
+  return seg !== undefined && AUTH_ROOTS.has(seg);
+}
 
-function isAuthRedirectRoute(
- location: unknown,
-): location is (typeof AUTH_REDIRECT_ROUTES)[number] {
- return (
- typeof location === 'string' &&
- (AUTH_REDIRECT_ROUTES as readonly string[]).includes(location)
- );
+function isProtectedRoute(pathname: string): boolean {
+  const seg = firstSegment(pathname);
+  return seg !== undefined && PROTECTED_ROOTS.has(seg);
+}
+
+/**
+ * Only accept redirects back to internal, whitelisted paths.
+ * Prevents open-redirect issues from a tampered `from` param.
+ */
+function isSafeRedirect(location: string | undefined): location is string {
+  if (!location || !location.startsWith('/')) return false;
+  const seg = firstSegment(location);
+  return seg !== undefined && PROTECTED_ROOTS.has(seg);
 }
 
 // --------------------------------------------------
-// Root Navigator
+// Root navigator
 // --------------------------------------------------
 
 function RootNavigator() {
- const router = useRouter();
- const pathname = usePathname();
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useGlobalSearchParams<{ from?: string | string[] }>();
+  const { session, isLoading } = useAuthSession();
 
- const params = useGlobalSearchParams<{
- from?: string | string[];
- }>();
+  const from = Array.isArray(params.from) ? params.from[0] : params.from;
 
- const { session, isLoading } = useAuthSession();
+  useEffect(() => {
+    if (isLoading) return;
 
- const from = Array.isArray(params.from)
- ? params.from[0]
- : params.from;
+    const loggedIn = session !== null;
 
- useEffect(() => {
- if (isLoading) return;
+    // 1. Guest hitting a protected page → login
+    if (!loggedIn && isProtectedRoute(pathname)) {
+      router.replace({
+        pathname: '/login',
+        params: { from: pathname },
+      });
+      return;
+    }
 
- const loggedIn = session !== null;
+    // 2. Authenticated user on auth pages → intended destination or home
+    if (loggedIn && isAuthRoute(pathname)) {
+      const destination: Href = isSafeRedirect(from) ? (from as Href) : '/';
+      router.replace(destination);
+    }
+  }, [from, isLoading, pathname, router, session]);
 
- const isAuthPage = (
- AUTH_ROUTES as readonly string[]
- ).includes(pathname);
+  if (isLoading) {
+    return (
+      <View style={styles.splash}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
 
- const isProtectedPage = (
- PROTECTED_ROUTES as readonly string[]
- ).includes(pathname);
-
- // Guest trying to access a protected route.
- if (!loggedIn && isProtectedPage) {
- router.replace({
- pathname: '/login',
- params: { from: pathname },
- });
-
- return;
- }
-
- // Authenticated user trying to access Login/Register.
- if (loggedIn && isAuthPage) {
- const destination = isAuthRedirectRoute(from) ? from : '/';
-
- router.replace(destination as Href);
- }
- }, [from, isLoading, pathname, router, session]);
-
- // Wait for the initial Supabase session.
- if (isLoading) {
- return null;
- }
-
- return (
- <Stack screenOptions={{ headerShown: false }}>
- <Stack.Screen name="(auth)" />
- <Stack.Screen name="(tabs)" />
- <Stack.Screen name="my-listings" />
- </Stack>
- );
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(auth)" />
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="my-listings" />
+      <Stack.Screen
+        name="chat/[id]"
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="property/[id]"
+        options={{ animation: 'slide_from_right' }}
+      />
+    </Stack>
+  );
 }
-
-// --------------------------------------------------
-// Root Layout
-// --------------------------------------------------
 
 export default function RootLayout() {
- return (
- <SafeAreaProvider>
- <AuthProvider>
- <FavoriteProvider>
- <RootNavigator />
- </FavoriteProvider>
- </AuthProvider>
- </SafeAreaProvider>
- );
+  return (
+    <SafeAreaProvider>
+      <AuthProvider>
+        <FavoriteProvider>
+          <RootNavigator />
+        </FavoriteProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
+  );
 }
+
+const styles = StyleSheet.create({
+  splash: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.background,
+  },
+});
