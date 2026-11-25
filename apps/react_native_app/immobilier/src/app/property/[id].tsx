@@ -15,7 +15,9 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { getPropertyById } from '../../services/propertyService';
+import { chatService } from '../../services/chatService';
 import { useFavorite } from '../../context/FavoriteContext';
+import { useAuthSession } from '../../context/AuthContext';
 import type { PropertyWithRelations } from '../../types/property';
 import { theme, spacing, radius, typography } from '../../theme';
 import MapView, { Marker } from 'react-native-maps';
@@ -68,8 +70,13 @@ export default function PropertyDetailsScreen() {
  const [loading, setLoading] = useState(true);
  const [loadError, setLoadError] = useState<string | null>(null);
  const [activeImageIndex, setActiveImageIndex] = useState(0);
- const { favoriteIds, add: addFavorite, remove: removeFavorite } =
- useFavorite();
+const { favoriteIds, add: addFavorite, remove: removeFavorite } =
+  useFavorite();
+const { session } = useAuthSession();
+const userId = session?.user?.id ?? null;
+
+const [contacting, setContacting] = useState(false);
+const [contactError, setContactError] = useState<string | null>(null);
 
  const handleToggleFavorite = useCallback(async () => {
  if (!id || Array.isArray(id)) return;
@@ -83,9 +90,46 @@ export default function PropertyDetailsScreen() {
  } catch (error) {
  console.error('Unable to toggle favorite:', error);
  }
- }, [addFavorite, favoriteIds, id, removeFavorite]);
+   }, [addFavorite, favoriteIds, id, removeFavorite]);
 
- const loadProperty = useCallback(async () => {
+  const handleContactOwner = useCallback(async () => {
+    if (!id || Array.isArray(id)) return;
+    if (!userId) return;
+
+    const ownerId = property?.profiles?.id;
+    if (!ownerId) {
+      setContactError('This property has no owner information.');
+      return;
+    }
+
+    if (ownerId === userId) {
+      setContactError("You cannot contact the owner of your own listing.");
+      return;
+    }
+
+    setContactError(null);
+    setContacting(true);
+
+    try {
+      const chatId = await chatService.getOrCreateChat(id, ownerId);
+
+      router.push({
+        pathname: '/chat/[id]' as never,
+        params: { id: chatId },
+      });
+    } catch (error) {
+      console.error('Unable to contact the owner:', error);
+      setContactError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to contact the owner. Please try again.',
+      );
+    } finally {
+      setContacting(false);
+    }
+  }, [id, userId, property, router]);
+
+  const loadProperty = useCallback(async () => {
  if (!id || Array.isArray(id)) {
  setLoadError('The property ID is invalid.');
  setLoading(false);
@@ -143,12 +187,12 @@ export default function PropertyDetailsScreen() {
  );
  }
 
- const owner = property.profiles;
- const images = [...property.property_images].sort(
- (first, second) => first.position - second.position,
- );
+  const owner = property.profiles;
+  const images = [...property.property_images].sort(
+    (first, second) => first.position - second.position,
+  );
 
- return (
+  return (
  <SafeAreaView style={styles.container} edges={['top']}>
  <StatusBar style="dark" />
 
@@ -332,13 +376,33 @@ export default function PropertyDetailsScreen() {
  )}
  <View style={styles.ownerInfo}>
  <Text style={styles.ownerName}>{owner?.full_name || 'Property owner'}</Text>
- {owner?.phone ? <Text style={styles.ownerPhone}>{owner.phone}</Text> : null}
- </View>
- </View>
- </View>
- </View>
- </ScrollView>
- </SafeAreaView>
+        {owner?.phone ? <Text style={styles.ownerPhone}>{owner.phone}</Text> : null}
+      </View>
+    </View>
+
+    {session && userId && owner?.id !== userId && (
+      <View style={styles.contactContainer}>
+        {contacting ? (
+          <ActivityIndicator size="small" color={colors.primary} />
+        ) : (
+          <Pressable
+            style={styles.contactButton}
+            onPress={handleContactOwner}
+            accessibilityRole="button"
+            accessibilityLabel="Contact owner"
+          >
+            <Text style={styles.contactButtonText}>Contact Owner</Text>
+          </Pressable>
+        )}
+        {contactError && (
+          <Text style={styles.contactErrorText}>{contactError}</Text>
+        )}
+      </View>
+    )}
+  </View>
+  </View>
+</ScrollView>
+</SafeAreaView>
  );
 }
 
@@ -577,10 +641,31 @@ const styles = StyleSheet.create({
  ...theme.fonts.titleMedium,
  color: colors.onSurface,
  },
- ownerPhone: {
- ...typography.body,
- color: colors.secondary,
- },
+  ownerPhone: {
+  ...typography.body,
+  color: colors.secondary,
+  },
+  contactContainer: {
+  marginTop: spacing.sm,
+  },
+  contactButton: {
+  minHeight: 44,
+  paddingHorizontal: spacing.xl,
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: colors.primary,
+  borderRadius: radius.md,
+  },
+  contactButtonText: {
+  ...theme.fonts.labelLarge,
+  color: colors.onPrimary,
+  },
+  contactErrorText: {
+  ...typography.body,
+  color: colors.error,
+  textAlign: 'center',
+  marginTop: spacing.sm,
+  },
  mapContainer: {
  width: '100%',
  height: 240,
