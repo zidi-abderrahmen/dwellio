@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/router.dart';
 import '../../core/theme.dart';
 import '../../models/property.dart';
 import '../../providers/property_providers.dart';
+import '../../services/location_service.dart';
 import '../../services/property_service.dart';
 import '../../widgets/auth_form_widgets.dart';
 
@@ -34,6 +38,8 @@ typedef PropertyEditUpdater = Future<Property> Function({
   int? surfaceM2,
   int? rooms,
   required String city,
+  required double latitude,
+  required double longitude,
 });
 
 class AddPropertyScreen extends ConsumerStatefulWidget {
@@ -42,12 +48,14 @@ class AddPropertyScreen extends ConsumerStatefulWidget {
     this.propertyId,
     this.loadPropertyForEditing,
     this.updateProperty,
+    this.locationService,
   });
 
   final String? propertyId;
   final Future<PropertyWithRelations> Function(String propertyId)?
   loadPropertyForEditing;
   final PropertyEditUpdater? updateProperty;
+  final LocationService? locationService;
 
   bool get isEditing => propertyId != null;
 
@@ -66,6 +74,8 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
   final _surfaceController = TextEditingController();
   final _roomsController = TextEditingController();
   late final _propertyService = PropertyService();
+  late final _locationService = widget.locationService ?? LocationService();
+  final _locationMapController = MapController();
   final _imagePicker = ImagePicker();
   final _uuid = const Uuid();
   final List<_SelectedPropertyImage> _selectedImages = [];
@@ -73,10 +83,30 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
   PropertyType? _propertyType;
   ListingType? _listingType;
   Property? _createdProperty;
+  double? _selectedLatitude;
+  double? _selectedLongitude;
   bool _loadingProperty = false;
   String? _loadError;
   bool _pickingImages = false;
   bool _submitting = false;
+  bool _gettingLocation = false;
+
+  LatLng? get _selectedLocation {
+    final latitude = _selectedLatitude;
+    final longitude = _selectedLongitude;
+    if (latitude == null ||
+        longitude == null ||
+        !latitude.isFinite ||
+        !longitude.isFinite ||
+        latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180) {
+      return null;
+    }
+
+    return LatLng(latitude, longitude);
+  }
 
   @override
   void initState() {
@@ -89,6 +119,7 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
 
   @override
   void dispose() {
+    _locationMapController.dispose();
     _titleController.dispose();
     _priceController.dispose();
     _cityController.dispose();
@@ -193,6 +224,8 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
       setState(() {
         _propertyType = PropertyType.values.byName(property.propertyType);
         _listingType = ListingType.values.byName(property.listingType);
+        _selectedLatitude = property.latitude;
+        _selectedLongitude = property.longitude;
         _loadError = null;
       });
     } on PropertyQueryFailure catch (error) {
@@ -224,9 +257,130 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
       _propertyType = null;
       _listingType = null;
       _createdProperty = null;
+      _selectedLatitude = null;
+      _selectedLongitude = null;
       _selectedImages.clear();
       _submitting = false;
     });
+  }
+
+  Widget _buildLocationPicker() {
+    final selectedLocation = _selectedLocation;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Property location (optional)',
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
+        const SizedBox(height: 8),
+        const Text('Tap the map to place the marker.'),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(
+            height: 240,
+            width: double.infinity,
+            child: FlutterMap(
+              mapController: _locationMapController,
+              options: MapOptions(
+                initialCenter:
+                    selectedLocation ?? const LatLng(36.8065, 10.1815),
+                initialZoom: selectedLocation == null ? 6 : 15,
+                onTap: (_, point) {
+                  setState(() {
+                    _selectedLatitude = point.latitude;
+                    _selectedLongitude = point.longitude;
+                  });
+                },
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.example.immobilier',
+                ),
+                MarkerLayer(
+                  markers: selectedLocation == null
+                      ? const []
+                      : [
+                          Marker(
+                            point: selectedLocation,
+                            width: 40,
+                            height: 40,
+                            child: const Icon(
+                              Icons.location_on,
+                              color: AppColors.primary,
+                              size: 40,
+                            ),
+                          ),
+                        ],
+                ),
+                RichAttributionWidget(
+                  attributions: [
+                    TextSourceAttribution('OpenStreetMap contributors'),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _gettingLocation ? null : _useMyLocation,
+            icon: _gettingLocation
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.my_location),
+            label: const Text('Use my location'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _useMyLocation() async {
+    if (_gettingLocation) return;
+
+    setState(() => _gettingLocation = true);
+    try {
+      final position = await _locationService.getCurrentPosition();
+      if (!mounted) return;
+
+      final currentLocation = LatLng(position.latitude, position.longitude);
+      setState(() {
+        _selectedLatitude = currentLocation.latitude;
+        _selectedLongitude = currentLocation.longitude;
+      });
+      _locationMapController.move(currentLocation, 15);
+    } on LocationServiceFailure catch (error) {
+      _showMessage(error.message);
+    } on LocationServiceDisabledException {
+      _showMessage(
+        'Location services are disabled. Please enable them and try again.',
+      );
+    } on PermissionDeniedException {
+      _showMessage('Location permission was denied.');
+    } catch (error) {
+      debugPrint('Failed to retrieve current location: $error');
+      _showMessage('Unable to get your location. Please try again.');
+    } finally {
+      if (mounted) setState(() => _gettingLocation = false);
+    }
+  }
+
+  LatLng? _getRequiredLocation() {
+    final selectedLocation = _selectedLocation;
+    if (selectedLocation == null) {
+      _showMessage(
+        'Select a location on the map or use your current location.',
+      );
+    }
+    return selectedLocation;
   }
 
   Future<void> _pickPropertyImages() async {
@@ -304,6 +458,9 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
         return;
       }
 
+      final selectedLocation = _getRequiredLocation();
+      if (selectedLocation == null) return;
+
       setState(() => _submitting = true);
       try {
         _createdProperty = await _propertyService.createProperty(
@@ -315,6 +472,8 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
           surfaceM2: surfaceM2,
           rooms: rooms,
           city: _cityController.text.trim(),
+          latitude: selectedLocation.latitude,
+          longitude: selectedLocation.longitude,
         );
       } on PropertyCreationFailure catch (error) {
         if (mounted) {
@@ -391,6 +550,9 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
       return;
     }
 
+    final selectedLocation = _getRequiredLocation();
+    if (selectedLocation == null) return;
+
     final title = _titleController.text.trim();
     final description = _descriptionController.text.trim();
     final surfaceText = _surfaceController.text.trim();
@@ -419,6 +581,8 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
           surfaceM2: surfaceM2,
           rooms: rooms,
           city: _cityController.text.trim(),
+          latitude: selectedLocation.latitude,
+          longitude: selectedLocation.longitude,
         );
       } else {
         await update(
@@ -431,6 +595,8 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
           surfaceM2: surfaceM2,
           rooms: rooms,
           city: _cityController.text.trim(),
+          latitude: selectedLocation.latitude,
+          longitude: selectedLocation.longitude,
         );
       }
       if (!mounted) return;
@@ -677,6 +843,8 @@ class _AddPropertyScreenState extends ConsumerState<AddPropertyScreen> {
                                 Icons.meeting_room_outlined,
                               ),
                             ),
+                            const SizedBox(height: 24),
+                            _buildLocationPicker(),
                             if (!widget.isEditing) ...[
                               const SizedBox(height: 24),
                               Align(
