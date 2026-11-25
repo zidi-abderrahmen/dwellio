@@ -163,7 +163,7 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
 
   Widget _buildListHeader(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 8, 4, 14),
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 18),
       child: Row(
         children: [
           Expanded(
@@ -263,14 +263,14 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(20),
           onTap: () => context.push(AppRoutes.chatLocation(conversation.id)),
           child: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(20),
               border: Border.all(color: AppColors.outlineVariant),
             ),
             child: Row(
@@ -313,7 +313,7 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
                         ),
                         decoration: BoxDecoration(
                           color: AppColors.surfaceVariant,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -395,7 +395,7 @@ class _ChatsScreenState extends ConsumerState<ChatsScreen> {
           : RefreshIndicator(
               onRefresh: _loadConversations,
               child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                 physics: const AlwaysScrollableScrollPhysics(),
                 itemCount: _conversations.length + 1,
                 itemBuilder: (context, index) {

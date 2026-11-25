@@ -48,7 +48,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _loading = true);
 
     try {
-      await ref.read(authServiceProvider).signIn(
+      await ref
+          .read(authServiceProvider)
+          .signIn(
             email: _emailController.text,
             password: _passwordController.text,
           );
@@ -77,7 +79,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const AuthHeader(
-            title: 'Immobilier',
+            title: 'Dwellio',
             subtitle: 'Sign in to your account',
           ),
           const SizedBox(height: 24),
@@ -135,9 +137,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             actionLabel: 'Sign up',
             onPressed: _loading
                 ? null
-                : () => context.go(
-                      AppRoutes.registerLocation(from: widget.from),
-                    ),
+                : () =>
+                      context.go(AppRoutes.registerLocation(from: widget.from)),
           ),
         ],
       ),

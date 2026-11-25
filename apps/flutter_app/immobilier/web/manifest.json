@@ -1,11 +1,11 @@
 {
-    "name": "immobilier",
-    "short_name": "immobilier",
+    "name": "Dwellio",
+    "short_name": "Dwellio",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F9FCFD",
+    "theme_color": "#103053",
+    "description": "Dwellio helps you find a place to call home.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

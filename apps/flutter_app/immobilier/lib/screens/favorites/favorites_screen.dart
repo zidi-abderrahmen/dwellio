@@ -118,9 +118,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
           favorite: true,
           onFavoritePress: () => _removeFavorite(property.id),
           onPress: () {
-            context.push(
-              AppRoutes.propertyDetailsLocation(property.id),
-            );
+            context.push(AppRoutes.propertyDetailsLocation(property.id));
           },
         ),
       ),
@@ -219,10 +217,14 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.favorite_border,
-                  size: 64,
-                  color: AppColors.secondary,
+                CircleAvatar(
+                  radius: 42,
+                  backgroundColor: AppColors.accent.withValues(alpha: 0.1),
+                  child: const Icon(
+                    Icons.favorite_border_rounded,
+                    size: 38,
+                    color: AppColors.primary,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text(
