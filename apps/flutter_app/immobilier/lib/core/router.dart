@@ -9,8 +9,9 @@ import '../main.dart' show HomeScreen;
 import '../providers/auth_providers.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/register_screen.dart';
+import '../screens/chat/chat_screen.dart';
+import '../screens/chat/chats_screen.dart';
 import '../screens/favorites/favorites_screen.dart';
-import '../screens/placeholder_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/shell/main_shell.dart';
 
@@ -21,6 +22,7 @@ abstract final class AppRoutes {
   static const favorites = '/favorites';
   static const add = '/add';
   static const chats = '/chats';
+  static const chat = '/chats/:chatId';
   static const profile = '/profile';
   static const myListings = '/profile/my-listings';
   static const propertyDetails = '/property/:id';
@@ -35,7 +37,9 @@ abstract final class AppRoutes {
       location == login || location == register;
 
   static bool isProtectedLocation(String location) =>
-      protectedPaths.contains(location) || location.startsWith('$myListings/');
+      protectedPaths.contains(location) ||
+      location.startsWith('$myListings/') ||
+      location.startsWith('$chats/');
 
   static String loginLocation({String? from}) => _withFrom(login, from);
   static String registerLocation({String? from}) => _withFrom(register, from);
@@ -47,6 +51,8 @@ abstract final class AppRoutes {
 
   static String propertyDetailsLocation(String id) =>
       '/property/${Uri.encodeComponent(id)}';
+  static String chatLocation(String chatId) =>
+      '$chats/${Uri.encodeComponent(chatId)}';
   static String editPropertyLocation(String id) =>
       '$myListings/${Uri.encodeComponent(id)}/edit';
 }
@@ -97,6 +103,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           return PropertyDetailsScreen(propertyId: propertyId);
         },
       ),
+      GoRoute(
+        path: AppRoutes.chat,
+        builder: (context, state) =>
+            ChatScreen(chatId: state.pathParameters['chatId']!),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             MainShell(navigationShell: navigationShell),
@@ -129,8 +140,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: AppRoutes.chats,
-                builder: (context, state) =>
-                    const PlaceholderScreen(title: 'Chats'),
+                builder: (context, state) => const ChatsScreen(),
               ),
             ],
           ),
