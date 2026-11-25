@@ -14,6 +14,7 @@ import {
   Text,
 } from 'react-native-paper';
 
+import { AppLogo } from '../AppLogo';
 import { theme, spacing, radius } from '../../theme';
 
 const colors = theme.colors;
@@ -86,6 +87,7 @@ type AuthHeaderProps = {
 export function AuthHeader({ title, subtitle }: AuthHeaderProps) {
   return (
     <View style={styles.header}>
+      <AppLogo size={44} />
       <Text variant="headlineMedium" style={styles.headerTitle} theme={theme}>
         {title}
       </Text>
