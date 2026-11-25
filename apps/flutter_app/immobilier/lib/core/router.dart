@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+export 'app_routes.dart';
+
+import 'app_routes.dart';
 import '../screens/property/add_property_screen.dart';
 import '../screens/property/property_details_screen.dart';
 import '../screens/property/my_listings_screen.dart';
@@ -14,48 +17,7 @@ import '../screens/chat/chats_screen.dart';
 import '../screens/favorites/favorites_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/shell/main_shell.dart';
-
-abstract final class AppRoutes {
-  static const login = '/login';
-  static const register = '/register';
-  static const home = '/home';
-  static const favorites = '/favorites';
-  static const add = '/add';
-  static const chats = '/chats';
-  static const chat = '/chats/:chatId';
-  static const profile = '/profile';
-  static const myListings = '/profile/my-listings';
-  static const propertyDetails = '/property/:id';
-
-  /// Same order as the bottom navigation tabs
-  static const tabs = [home, favorites, add, chats, profile];
-
-  /// Tabs that require an account
-  static const protectedPaths = {favorites, add, chats, profile, myListings};
-
-  static bool isAuthPage(String location) =>
-      location == login || location == register;
-
-  static bool isProtectedLocation(String location) =>
-      protectedPaths.contains(location) ||
-      location.startsWith('$myListings/') ||
-      location.startsWith('$chats/');
-
-  static String loginLocation({String? from}) => _withFrom(login, from);
-  static String registerLocation({String? from}) => _withFrom(register, from);
-
-  static String _withFrom(String path, String? from) {
-    if (from == null || !protectedPaths.contains(from)) return path;
-    return Uri(path: path, queryParameters: {'from': from}).toString();
-  }
-
-  static String propertyDetailsLocation(String id) =>
-      '/property/${Uri.encodeComponent(id)}';
-  static String chatLocation(String chatId) =>
-      '$chats/${Uri.encodeComponent(chatId)}';
-  static String editPropertyLocation(String id) =>
-      '$myListings/${Uri.encodeComponent(id)}/edit';
-}
+import '../screens/notifications/notifications_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier<int>(0);
@@ -107,6 +69,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.chat,
         builder: (context, state) =>
             ChatScreen(chatId: state.pathParameters['chatId']!),
+      ),
+      GoRoute(
+        path: AppRoutes.notifications,
+        builder: (context, state) => const NotificationsScreen(),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
