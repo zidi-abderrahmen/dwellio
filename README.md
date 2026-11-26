@@ -808,7 +808,7 @@ The repository uses a short-lived feature-branch workflow. Folder ownership keep
 
 ## License
 
-A license has not been specified in the project plan. Add the project's chosen `LICENSE` file before describing the repository as distributed under a particular open-source license.
+This project is licensed under the [MIT License](./LICENSE).
 
 ---
 
