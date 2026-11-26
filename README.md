@@ -156,29 +156,29 @@ The project plan places the following outside the required MVP or after the Must
 
 | Screen | Screenshot |
 | --- | --- |
-| Login / Register | ![Login](apps/flutter_app/immobilier/docs/screenshots/login_page.jpg) |
-| Home and property cards | ![Home](apps/flutter_app/immobilier/docs/screenshots/home_page.jpg) |
-| Search and filters | ![Search](apps/flutter_app/immobilier/docs/screenshots/search_filter.jpg) |
-| Property details | ![Property details](apps/flutter_app/immobilier/docs/screenshots/property_details.jpg) |
-| Add property | ![Add property](apps/flutter_app/immobilier/docs/screenshots/add_edit_page.jpg) |
-| Favorites | ![Favorites](apps/flutter_app/immobilier/docs/screenshots/favorite_page.jpg) |
-| Chats | ![Chat](apps/flutter_app/immobilier/docs/screenshots/chat_page.jpg) |
-| Notifications | ![Notifications](apps/flutter_app/immobilier/docs/screenshots/notifications_page.jpg) |
-| Profile | ![Profile](apps/flutter_app/immobilier/docs/screenshots/profile_page.jpg) |
+| Login / Register | ![Login](apps/flutter_app//docs/screenshots/login_page.jpg) |
+| Home and property cards | ![Home](apps/flutter_app//docs/screenshots/home_page.jpg) |
+| Search and filters | ![Search](apps/flutter_app//docs/screenshots/search_filter.jpg) |
+| Property details | ![Property details](apps/flutter_app//docs/screenshots/property_details.jpg) |
+| Add property | ![Add property](apps/flutter_app//docs/screenshots/add_edit_page.jpg) |
+| Favorites | ![Favorites](apps/flutter_app//docs/screenshots/favorite_page.jpg) |
+| Chats | ![Chat](apps/flutter_app//docs/screenshots/chat_page.jpg) |
+| Notifications | ![Notifications](apps/flutter_app//docs/screenshots/notifications_page.jpg) |
+| Profile | ![Profile](apps/flutter_app//docs/screenshots/profile_page.jpg) |
 
 ### React Native
 
 | Screen | Screenshot |
 | --- | --- |
-| Login / Register | ![Login](apps/react_native_app/immobilier/docs/screenshots/login_page.jpg) |
-| Home and property cards | ![Home](apps/react_native_app/immobilier/docs/screenshots/home_page.jpg) |
-| Search and filters | ![Search](apps/react_native_app/immobilier/docs/screenshots/search_filter.jpg) |
-| Property details | ![Property details](apps/react_native_app/immobilier/docs/screenshots/property_details.jpg) |
-| Add property | ![Add property](apps/react_native_app/immobilier/docs/screenshots/add_edit_property.jpg) |
-| Favorites | ![Favorites](apps/react_native_app/immobilier/docs/screenshots/favorite_page.jpg) |
-| Chats | ![Chat](apps/react_native_app/immobilier/docs/screenshots/chat_page.jpg) |
-| Notifications | ![Notifications](apps/react_native_app/immobilier/docs/screenshots/notification_page.jpg) |
-| Profile | ![Profile](apps/react_native_app/immobilier/docs/screenshots/profile_page.jpg) |
+| Login / Register | ![Login](apps/react_native_app//docs/screenshots/login_page.jpg) |
+| Home and property cards | ![Home](apps/react_native_app//docs/screenshots/home_page.jpg) |
+| Search and filters | ![Search](apps/react_native_app//docs/screenshots/search_filter.jpg) |
+| Property details | ![Property details](apps/react_native_app//docs/screenshots/property_details.jpg) |
+| Add property | ![Add property](apps/react_native_app//docs/screenshots/add_edit_property.jpg) |
+| Favorites | ![Favorites](apps/react_native_app//docs/screenshots/favorite_page.jpg) |
+| Chats | ![Chat](apps/react_native_app//docs/screenshots/chat_page.jpg) |
+| Notifications | ![Notifications](apps/react_native_app//docs/screenshots/notification_page.jpg) |
+| Profile | ![Profile](apps/react_native_app//docs/screenshots/profile_page.jpg) |
 
 ---
 
@@ -426,7 +426,7 @@ The MVP includes **in-app realtime notifications**. Remote push notifications de
 
 - Git.
 - Flutter SDK and a working Android toolchain.
-- Node.js version supported by the Expo SDK used by `apps/react_native_app/immobilier`.
+- Node.js version supported by the Expo SDK used by `apps/react_native_app/`.
 - npm or the package manager represented by the committed lockfile.
 - Android Studio / Android SDK and an Android emulator, or a physical Android device.
 - [Expo Go](https://expo.dev/go) on a compatible device if using the Expo Go workflow.
@@ -450,8 +450,8 @@ Resolve the required toolchain issues before running either application.
 ### Clone the repository
 
 ```bash
-git clone <repository-url>
-cd immobilier-services
+git clone https://github.com/zidi-abderrahmen/dwellio.git
+cd dwellios
 ```
 
 Replace `<repository-url>` with the Git repository URL you have access to.
@@ -522,14 +522,14 @@ The Supabase client is initialized from the Flutter application entry point befo
 
 ### React Native / Expo configuration
 
-Create a `.env` file inside `apps/react_native_app/immobilier/` using the Expo public environment variable names:
+Create a `.env` file inside `apps/react_native_app//` using the Expo public environment variable names:
 
 ```dotenv
 EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_OR_PUBLISHABLE_KEY
 ```
 
-The Supabase client in `apps/react_native_app/immobilier/src/lib/supabase.ts` should use these values and configure session persistence with AsyncStorage. Follow [`apps/react_native_app/immobilier/README.md`](./apps/react_native_app/immobilier/README.md) and the actual `.gitignore` / environment setup in the repository.
+The Supabase client in `apps/react_native_app//src/lib/supabase.ts` should use these values and configure session persistence with AsyncStorage. Follow [`apps/react_native_app//README.md`](./apps/react_native_app/immobilier/README.md) and the actual `.gitignore` / environment setup in the repository.
 
 > **Security:** Expo `EXPO_PUBLIC_` values are included in the client bundle and are not secret storage. The anon/publishable key is intended for client use with RLS. Never expose the `service_role` key in either app, a `.env` file used by a client build, screenshots or source control.
 
