@@ -5,7 +5,7 @@
 Real Estate Mobile Services connects property seekers and property owners through a shared platform. Users can discover sale and rental listings, search and filter properties, view photos and map locations, publish their own listings, save favorites, contact owners and exchange realtime messages. Both mobile applications use the same Supabase project, allowing a Flutter user and a React Native user to interact with the same properties and conversations.
 
 > **Project structure:** this repository contains two mobile applications and the shared backend configuration/documentation. Each app has its own README with framework-specific setup instructions:
-> - [Flutter app](./flutter_app/README.md)
+> - [Flutter app](./apps/flutter_app/immobilier/README.md)
 > - [React Native app](./apps/react_native_app/immobilier/README.md)
 
 ![Flutter](https://img.shields.io/badge/Client-Flutter-02569B?logo=flutter&logoColor=white)
