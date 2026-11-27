@@ -43,6 +43,7 @@ dependencies:
   geolocator: ^14.1.2
   flutter_dotenv: ^6.0.2
   flutter_svg: ^2.5.1
+  uuid: ^4.6.0
 
 dev_dependencies:
   flutter_test:
